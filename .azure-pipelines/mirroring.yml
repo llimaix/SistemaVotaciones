@@ -1,0 +1,52 @@
+# ============================================================
+#  Mirror: Azure DevOps  →  GitHub
+#  Se ejecuta automáticamente en cada push a cualquier rama.
+#
+#  Variables requeridas (definir en Azure DevOps > Pipelines >
+#  Edit > Variables, marcarlas como "secret"):
+#
+#    GITHUB_TOKEN  →  Personal Access Token de GitHub con
+#                     permisos: repo (Full control)
+#    GITHUB_REPO   →  URL del repo GitHub SIN credenciales,
+#                     p. ej.: github.com/tu-usuario/tu-repo.git
+# ============================================================
+
+trigger:
+  branches:
+    include:
+      - '*'   # Escucha todos los branches
+  tags:
+    include:
+      - '*'   # Escucha todos los tags
+
+pool:
+  vmImage: ubuntu-latest
+
+steps:
+  - checkout: self
+    fetchDepth: 0          # Historial completo (necesario para --mirror)
+    persistCredentials: true
+
+  - script: |
+      set -euo pipefail
+
+      echo "Configurando identidad de Git..."
+      git config user.email "azure-mirror-bot@noreply.com"
+      git config user.name  "Azure Mirror Bot"
+
+      # Construir la URL autenticada hacia GitHub
+      GITHUB_URL="https://${GITHUB_TOKEN}@${GITHUB_REPO}"
+
+      echo "Agregando remote 'github'..."
+      git remote add github "$GITHUB_URL" 2>/dev/null \
+        || git remote set-url github "$GITHUB_URL"
+
+      echo "Ejecutando mirror push a GitHub..."
+      # --mirror sincroniza ramas, tags y eliminaciones
+      git push github --mirror
+
+      echo "Mirror completado exitosamente."
+    displayName: 'Mirror → GitHub'
+    env:
+      GITHUB_TOKEN: $(GITHUB_TOKEN)   # Variable secreta de Azure DevOps
+      GITHUB_REPO:  $(GITHUB_REPO)    # Variable de Azure DevOps
