@@ -1,16 +1,3 @@
-# ============================================================
-#  Mirror: Azure DevOps  →  GitHub
-#  Se ejecuta automáticamente en cada push a cualquier rama.
-#
-#  Variables requeridas (definir en Azure DevOps > Pipelines >
-#  Edit > Variables, marcarlas como "secret"):
-#
-#    GITHUB_TOKEN  →  Personal Access Token de GitHub con
-#                     permisos: repo (Full control)
-#    GITHUB_REPO   →  URL del repo GitHub SIN credenciales,
-#                     p. ej.: github.com/tu-usuario/tu-repo.git
-# ============================================================
-
 trigger:
   branches:
     include:
