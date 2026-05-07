@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Sistema de Votaciones - Login</title>
+  <link rel="stylesheet" href="/css/styles.css">
+</head>
+<body class="login-page">
+
+  <div class="login-container">
+    <div class="login-box">
+      <h1>🗳️ Sistema de Votaciones</h1>
+      <p>Ingresa tus credenciales para continuar</p>
+
+      <!-- Mensaje de error -->
+      <div id="error-msg" class="alert alert-error" style="display:none"></div>
+
+      <form action="/auth/login" method="POST">
+        <div class="form-group">
+          <label>Correo electrónico</label>
+          <input type="email" name="email" placeholder="correo@ejemplo.com" required>
+        </div>
+        <div class="form-group">
+          <label>Contraseña</label>
+          <input type="password" name="password" placeholder="••••••••" required>
+        </div>
+        <button type="submit" class="btn btn-primary btn-block">
+          Iniciar Sesión
+        </button>
+      </form>
+
+      <p class="hint">Admin por defecto: admin@votaciones.com / admin123</p>
+    </div>
+  </div>
+
+  <script>
+    // Mostrar error si viene en la URL
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('error')) {
+      const msg = document.getElementById('error-msg');
+      msg.textContent = params.get('error');
+      msg.style.display = 'block';
+    }
+  </script>
+
+</body>
+</html>
