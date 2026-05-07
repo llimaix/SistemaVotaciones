@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Sistema de Votaciones - Dashboard</title>
+  <link rel="stylesheet" href="/css/styles.css">
+</head>
+<body>
+
+  <!-- Navbar -->
+  <nav class="navbar">
+    <div class="navbar-brand">🗳️ Sistema de Votaciones</div>
+    <div class="navbar-menu">
+      <button onclick="mostrarSeccion('usuarios')" class="nav-btn">👥 Usuarios</button>
+      <button onclick="mostrarSeccion('votaciones')" class="nav-btn">🗳️ Votaciones</button>
+      <button onclick="mostrarSeccion('mesas')" class="nav-btn">📋 Mesas</button>
+      <button onclick="mostrarSeccion('resultados')" class="nav-btn">📊 Resultados</button>
+      <a href="/auth/logout" class="nav-btn btn-logout">🚪 Salir</a>
+    </div>
+  </nav>
+
+  <!-- Mensaje de éxito/error -->
+  <div id="alert-msg" class="alert" style="display:none; margin:1rem"></div>
+
+  <!-- SECCIÓN: USUARIOS -->
+  <div id="seccion-usuarios" class="seccion">
+    <div class="card">
+      <h2>👥 Gestión de Usuarios</h2>
+      <form action="/usuarios/crear" method="POST" class="form-inline">
+        <input type="text" name="nombre" placeholder="Nombre completo" required>
+        <input type="email" name="email" placeholder="Correo electrónico" required>
+        <input type="password" name="password" placeholder="Contraseña" required>
+        <select name="rol">
+          <option value="operador">Operador</option>
+          <option value="admin">Administrador</option>
+        </select>
+        <button type="submit" class="btn btn-primary">➕ Crear Usuario</button>
+      </form>
+      <div id="lista-usuarios" class="lista"></div>
+    </div>
+  </div>
+
+  <!-- SECCIÓN: VOTACIONES -->
+  <div id="seccion-votaciones" class="seccion" style="display:none">
+    <div class="card">
+      <h2>🗳️ Gestión de Votaciones</h2>
+      <form action="/votaciones/crear" method="POST" class="form-inline">
+        <input type="text" name="nombre" placeholder="Nombre de la votación" required>
+        <input type="text" name="descripcion" placeholder="Descripción">
+        <input type="date" name="fecha" required>
+        <button type="submit" class="btn btn-primary">➕ Crear Votación</button>
+      </form>
+      <div id="lista-votaciones" class="lista"></div>
+    </div>
+  </div>
+
+  <!-- SECCIÓN: MESAS -->
+  <div id="seccion-mesas" class="seccion" style="display:none">
+    <div class="card">
+      <h2>📋 Gestión de Mesas</h2>
+      <form action="/mesas/crear" method="POST" class="form-inline">
+        <input type="text" name="numero" placeholder="Número de mesa" required>
+        <input type="text" name="ubicacion" placeholder="Ubicación" required>
+        <select name="votacion_id" id="select-votacion-mesa">
+          <option value="">Seleccionar votación</option>
+        </select>
+        <button type="submit" class="btn btn-primary">➕ Crear Mesa</button>
+      </form>
+      <div id="lista-mesas" class="lista"></div>
+    </div>
+  </div>
+
+  <!-- SECCIÓN: RESULTADOS -->
+  <div id="seccion-resultados" class="seccion" style="display:none">
+    <div class="card">
+      <h2>📊 Registrar Resultado</h2>
+      <form action="/resultados/registrar" method="POST" class="form-inline">
+        <select name="votacion_id" id="select-votacion-resultado">
+          <option value="">Seleccionar votación</option>
+        </select>
+        <select name="mesa_id" id="select-mesa-resultado">
+          <option value="">Seleccionar mesa</option>
+        </select>
+        <input type="text" name="candidato" placeholder="Nombre del candidato" required>
+        <input type="number" name="votos" placeholder="Número de votos" required min="0">
+        <button type="submit" class="btn btn-primary">💾 Registrar</button>
+      </form>
+    </div>
+    <div class="card">
+      <h2>📈 Consultar Resultados</h2>
+      <div class="form-inline">
+        <select id="select-consulta-votacion">
+          <option value="">Seleccionar votación</option>
+        </select>
+        <button onclick="consultarResultados()" class="btn btn-secondary">🔍 Consultar</button>
+      </div>
+      <div id="lista-resultados" class="lista"></div>
+    </div>
+  </div>
+
+  <script src="/js/dashboard.js"></script>
+</body>
+</html>
