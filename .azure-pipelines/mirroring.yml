@@ -11,7 +11,7 @@ pool:
 
 steps:
   - checkout: self
-    fetchDepth: 0          # Historial completo (necesario para --mirror)
+    fetchDepth: 0
     persistCredentials: true
 
   - script: |
@@ -35,5 +35,5 @@ steps:
       echo "Mirror completado exitosamente."
     displayName: 'Mirror → GitHub'
     env:
-      GITHUB_TOKEN: $(GITHUB_TOKEN)   # Variable secreta de Azure DevOps
-      GITHUB_REPO:  $(GITHUB_REPO)    # Variable de Azure DevOps
+      GITHUB_TOKEN: $(GITHUB_TOKEN)
+      GITHUB_REPO:  $(GITHUB_REPO)

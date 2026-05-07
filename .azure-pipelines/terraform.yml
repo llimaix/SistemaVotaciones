@@ -1,0 +1,142 @@
+# ============================================================
+#  Pipeline: Terraform Infrastructure
+#  Stages: validate → plan → apply
+#
+#  Variables requeridas (Azure DevOps > Library > Variable Group
+#  "terraform-secrets"):
+#    AWS_ACCESS_KEY_ID      → Credencial AWS (secret)
+#    AWS_SECRET_ACCESS_KEY  → Credencial AWS (secret)
+#    AWS_DEFAULT_REGION     → p.ej. us-east-1
+#
+#  El stage "Apply Prod" requiere aprobación manual antes
+#  de ejecutarse (configurar en Environments de Azure DevOps).
+# ============================================================
+
+trigger:
+  branches:
+    include:
+      - main
+      - develop
+  paths:
+    include:
+      - infra/terraform/**
+
+pr:
+  branches:
+    include:
+      - main
+      - develop
+  paths:
+    include:
+      - infra/terraform/**
+
+variables:
+  - group: terraform-secrets           # Variable Group con AWS_ACCESS_KEY_ID, etc.
+  - name: TF_VERSION
+    value: '1.7.5'
+  - name: TF_ROOT
+    value: '$(Build.SourcesDirectory)/infra/terraform/environments'
+
+pool:
+  name: Default   # Agente self-hosted
+
+# ── Plantilla reutilizable de pasos de Terraform ─────────
+# Se usa en cada stage con diferentes comandos
+
+stages:
+
+  # ────────────────────────────────────────────────────────
+  #  STAGE 1: Validate (todas las ramas y PRs)
+  # ────────────────────────────────────────────────────────
+  - stage: Validate
+    displayName: '🔍 Validate Terraform'
+    jobs:
+      - job: ValidateDev
+        displayName: 'Validate - DEV'
+        steps:
+          - template: templates/terraform-steps.yml
+            parameters:
+              environment: dev
+              tfCommand: validate
+
+      - job: ValidateProd
+        displayName: 'Validate - PROD'
+        steps:
+          - template: templates/terraform-steps.yml
+            parameters:
+              environment: prod
+              tfCommand: validate
+
+  # ────────────────────────────────────────────────────────
+  #  STAGE 2: Plan DEV (solo en push a develop o main)
+  # ────────────────────────────────────────────────────────
+  - stage: PlanDev
+    displayName: '📋 Plan DEV'
+    dependsOn: Validate
+    condition: and(succeeded(), ne(variables['Build.Reason'], 'PullRequest'))
+    jobs:
+      - job: PlanDev
+        displayName: 'Terraform Plan - DEV'
+        steps:
+          - template: templates/terraform-steps.yml
+            parameters:
+              environment: dev
+              tfCommand: plan
+              savePlan: true
+
+  # ────────────────────────────────────────────────────────
+  #  STAGE 3: Apply DEV (solo en push a develop o main)
+  # ────────────────────────────────────────────────────────
+  - stage: ApplyDev
+    displayName: '🚀 Apply DEV'
+    dependsOn: PlanDev
+    condition: and(succeeded(), eq(variables['Build.SourceBranchName'], 'develop'))
+    jobs:
+      - deployment: ApplyDev
+        displayName: 'Terraform Apply - DEV'
+        environment: 'dev'           # Crear este environment en Azure DevOps
+        strategy:
+          runOnce:
+            deploy:
+              steps:
+                - template: templates/terraform-steps.yml
+                  parameters:
+                    environment: dev
+                    tfCommand: apply
+
+  # ────────────────────────────────────────────────────────
+  #  STAGE 4: Plan PROD (solo en push a main)
+  # ────────────────────────────────────────────────────────
+  - stage: PlanProd
+    displayName: '📋 Plan PROD'
+    dependsOn: Validate
+    condition: and(succeeded(), eq(variables['Build.SourceBranchName'], 'main'), ne(variables['Build.Reason'], 'PullRequest'))
+    jobs:
+      - job: PlanProd
+        displayName: 'Terraform Plan - PROD'
+        steps:
+          - template: templates/terraform-steps.yml
+            parameters:
+              environment: prod
+              tfCommand: plan
+              savePlan: true
+
+  # ────────────────────────────────────────────────────────
+  #  STAGE 5: Apply PROD (requiere aprobación manual)
+  # ────────────────────────────────────────────────────────
+  - stage: ApplyProd
+    displayName: '🚀 Apply PROD  ⚠️ Requiere aprobación'
+    dependsOn: PlanProd
+    condition: and(succeeded(), eq(variables['Build.SourceBranchName'], 'main'))
+    jobs:
+      - deployment: ApplyProd
+        displayName: 'Terraform Apply - PROD'
+        environment: 'prod'          # Configurar aprobación manual en este environment
+        strategy:
+          runOnce:
+            deploy:
+              steps:
+                - template: templates/terraform-steps.yml
+                  parameters:
+                    environment: prod
+                    tfCommand: apply
