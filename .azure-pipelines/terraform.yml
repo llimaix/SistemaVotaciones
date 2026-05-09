@@ -105,9 +105,7 @@ stages:
       and(
         succeeded(),
         ne(variables['Build.Reason'], 'PullRequest'),
-        or('),
-          eq(variables['Build.SourceBranchName'], 'dev')
-        )
+        eq(variables['Build.SourceBranchName'], 'dev')
       )
     jobs:
       - deployment: ApplyDev
