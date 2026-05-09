@@ -76,86 +76,80 @@ stages:
     dependsOn: Build
     condition: succeeded()
     jobs:
-      - deployment: DeployFrontend
+      - job: DeployFrontend
         displayName: 'Sync S3 + Invalidar CloudFront'
-        environment: 'frontend-main'
-        strategy:
-          runOnce:
-            deploy:
-              steps:
-                - download: current
-                  artifact: frontend-dist
-                  displayName: 'Descargar artefacto'
+        steps:
+          - download: current
+            artifact: frontend-dist
+            displayName: 'Descargar artefacto'
 
-                - task: AWSShellScript@1
-                  displayName: 'aws s3 sync + cloudfront invalidation'
-                  inputs:
-                    awsCredentials: $(AWS_SERVICE_CONNECTION)
-                    regionName: $(AWS_REGION)
-                    scriptType: inline
-                    inlineScript: |
-                      set -euo pipefail
+          - task: AWSShellScript@1
+            displayName: 'aws s3 sync + cloudfront invalidation'
+            inputs:
+              awsCredentials: $(AWS_SERVICE_CONNECTION)
+              regionName: $(AWS_REGION)
+              scriptType: inline
+              inlineScript: |
+                set -euo pipefail
 
-                      DIST_DIR="$(Pipeline.Workspace)/frontend-dist"
+                DIST_DIR="$(Pipeline.Workspace)/frontend-dist"
 
-                      # ── Validar variables requeridas ───────────────────
-                      if [ -z "${S3_FRONTEND_BUCKET:-}" ]; then
-                        echo "##[error]Variable S3_FRONTEND_BUCKET no definida."
-                        echo "##[error]Ve a: Pipeline → Edit → Variables → (+) → S3_FRONTEND_BUCKET"
-                        exit 1
-                      fi
+                # ── Validar variables requeridas ─────────────────────
+                if [ -z "${S3_FRONTEND_BUCKET:-}" ]; then
+                  echo "##[error]Variable S3_FRONTEND_BUCKET no definida."
+                  echo "##[error]Ve a: Pipeline → Edit → Variables → (+) → S3_FRONTEND_BUCKET"
+                  exit 1
+                fi
 
-                      if [ -z "${CLOUDFRONT_DIST_ID:-}" ]; then
-                        echo "##[error]Variable CLOUDFRONT_DIST_ID no definida."
-                        echo "##[error]Ve a: Pipeline → Edit → Variables → (+) → CLOUDFRONT_DIST_ID"
-                        exit 1
-                      fi
+                if [ -z "${CLOUDFRONT_DIST_ID:-}" ]; then
+                  echo "##[error]Variable CLOUDFRONT_DIST_ID no definida."
+                  echo "##[error]Ve a: Pipeline → Edit → Variables → (+) → CLOUDFRONT_DIST_ID"
+                  exit 1
+                fi
 
-                      echo "────────────────────────────────────────────"
-                      echo " Bucket S3   : ${S3_FRONTEND_BUCKET}"
-                      echo " CloudFront  : ${CLOUDFRONT_DIST_ID}"
-                      echo " Build dir   : ${DIST_DIR}"
-                      echo "────────────────────────────────────────────"
+                echo "────────────────────────────────────────────"
+                echo " Bucket S3   : ${S3_FRONTEND_BUCKET}"
+                echo " CloudFront  : ${CLOUDFRONT_DIST_ID}"
+                echo " Build dir   : ${DIST_DIR}"
+                echo "────────────────────────────────────────────"
 
-                      # ── Archivos con hash (JS, CSS, fuentes, imágenes) ─
-                      # Angular genera nombres únicos con hash → caché máximo (1 año)
-                      echo "⬆️  Subiendo assets con caché inmutable..."
-                      aws s3 sync "${DIST_DIR}" "s3://${S3_FRONTEND_BUCKET}" \
-                        --delete \
-                        --cache-control "public,max-age=31536000,immutable" \
-                        --exclude "*.html" \
-                        --exclude "*.json"
+                # ── Assets con hash → caché máximo (1 año) ──────────
+                echo "⬆️  Subiendo assets con caché inmutable..."
+                aws s3 sync "${DIST_DIR}" "s3://${S3_FRONTEND_BUCKET}" \
+                  --delete \
+                  --cache-control "public,max-age=31536000,immutable" \
+                  --exclude "*.html" \
+                  --exclude "*.json"
 
-                      # ── HTML y JSON sin caché ──────────────────────────
-                      # index.html y ngsw.json deben estar siempre frescos
-                      echo "⬆️  Subiendo HTML/JSON sin caché..."
-                      aws s3 sync "${DIST_DIR}" "s3://${S3_FRONTEND_BUCKET}" \
-                        --cache-control "no-cache,no-store,must-revalidate" \
-                        --include "*.html" \
-                        --include "*.json"
+                # ── HTML y JSON → sin caché ──────────────────────────
+                echo "⬆️  Subiendo HTML/JSON sin caché..."
+                aws s3 sync "${DIST_DIR}" "s3://${S3_FRONTEND_BUCKET}" \
+                  --cache-control "no-cache,no-store,must-revalidate" \
+                  --include "*.html" \
+                  --include "*.json"
 
-                      echo "✅ S3 sync completado"
+                echo "✅ S3 sync completado"
 
-                      # ── Crear invalidación de CloudFront ───────────────
-                      echo "🔄 Invalidando caché de CloudFront..."
-                      INVALIDATION_ID=$(aws cloudfront create-invalidation \
-                        --distribution-id "${CLOUDFRONT_DIST_ID}" \
-                        --paths "/*" \
-                        --query 'Invalidation.Id' \
-                        --output text)
+                # ── Crear invalidación de CloudFront ─────────────────
+                echo "🔄 Invalidando caché de CloudFront..."
+                INVALIDATION_ID=$(aws cloudfront create-invalidation \
+                  --distribution-id "${CLOUDFRONT_DIST_ID}" \
+                  --paths "/*" \
+                  --query 'Invalidation.Id' \
+                  --output text)
 
-                      echo "   Invalidation ID: ${INVALIDATION_ID}"
+                echo "   Invalidation ID: ${INVALIDATION_ID}"
 
-                      # ── Esperar a que la invalidación complete ──────────
-                      echo "⏳ Esperando que la invalidación complete..."
-                      aws cloudfront wait invalidation-completed \
-                        --distribution-id "${CLOUDFRONT_DIST_ID}" \
-                        --id "${INVALIDATION_ID}"
+                # ── Esperar a que la invalidación complete ────────────
+                echo "⏳ Esperando que la invalidación complete..."
+                aws cloudfront wait invalidation-completed \
+                  --distribution-id "${CLOUDFRONT_DIST_ID}" \
+                  --id "${INVALIDATION_ID}"
 
-                      echo "✅ CloudFront invalidado correctamente"
-                      echo "────────────────────────────────────────────"
-                      echo "🌐 Deploy completado. El sitio ya está actualizado."
-                      echo "────────────────────────────────────────────"
-                  env:
-                    S3_FRONTEND_BUCKET: $(S3_FRONTEND_BUCKET)
-                    CLOUDFRONT_DIST_ID: $(CLOUDFRONT_DIST_ID)
+                echo "✅ CloudFront invalidado correctamente"
+                echo "────────────────────────────────────────────"
+                echo "🌐 Deploy completado. El sitio ya está actualizado."
+                echo "────────────────────────────────────────────"
+            env:
+              S3_FRONTEND_BUCKET: $(S3_FRONTEND_BUCKET)
+              CLOUDFRONT_DIST_ID: $(CLOUDFRONT_DIST_ID)
