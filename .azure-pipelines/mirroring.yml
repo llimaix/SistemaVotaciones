@@ -1,10 +1,9 @@
 trigger:
   branches:
     include:
-      - '*'   # Escucha todos los branches
-  tags:
-    include:
-      - '*'   # Escucha todos los tags
+      - main   # Solo dispara cuando llegan cambios a main
+
+pr: none   # No corre en Pull Requests
 
 pool:
   vmImage: ubuntu-latest
@@ -17,23 +16,19 @@ steps:
   - script: |
       set -euo pipefail
 
-      echo "Configurando identidad de Git..."
       git config user.email "azure-mirror-bot@noreply.com"
       git config user.name  "Azure Mirror Bot"
 
-      # Construir la URL autenticada hacia GitHub
       GITHUB_URL="https://${GITHUB_TOKEN}@${GITHUB_REPO}"
 
-      echo "Agregando remote 'github'..."
       git remote add github "$GITHUB_URL" 2>/dev/null \
         || git remote set-url github "$GITHUB_URL"
 
-      echo "Ejecutando mirror push a GitHub..."
-      # --mirror sincroniza ramas, tags y eliminaciones
-      git push github --mirror
+      echo "── Pushing main → ${GITHUB_REPO} ──"
+      git push github HEAD:refs/heads/main
 
-      echo "Mirror completado exitosamente."
-    displayName: 'Mirror → GitHub'
+      echo "✅ Mirror completado exitosamente."
+    displayName: 'Mirror → GitHub main'
     env:
       GITHUB_TOKEN: $(GITHUB_TOKEN)
       GITHUB_REPO:  $(GITHUB_REPO)
