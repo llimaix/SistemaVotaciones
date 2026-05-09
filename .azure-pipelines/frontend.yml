@@ -1,35 +1,29 @@
 # ============================================================
 #  frontend.yml
-#  CI/CD del Frontend Angular → S3 + CloudFront (dev)
+#  CI/CD del Frontend Angular → S3 + CloudFront
 #
-#  Triggers:
-#  - Push a `dev` con cambios en frontend/
-#  - Push a `main` (deploy de producción — actualmente solo dev)
+#  Trigger: cada commit en la rama `main`
+#  Flujo:   Build → Deploy S3 → Invalidar CloudFront
 #
-#  Requisitos en Azure DevOps:
-#  - Service Connection AWS: "aws-sistema-votaciones"
-#  - Variables del pipeline:
-#    · S3_FRONTEND_BUCKET  → nombre del bucket (output de terraform)
-#    · CLOUDFRONT_DIST_ID  → ID de la distribución (output de terraform)
+#  Requisitos en Azure DevOps (Pipeline → Edit → Variables):
+#  · S3_FRONTEND_BUCKET  → nombre del bucket S3 del frontend
+#                          (output "s3_frontend_bucket" de Terraform)
+#  · CLOUDFRONT_DIST_ID  → ID de la distribución CloudFront
+#                          (output "cloudfront_distribution_id" de Terraform)
+#
+#  Service Connection AWS: "aws-sistema-votaciones"
 # ============================================================
 
 trigger:
   branches:
     include:
-      - dev
-      - main
+      - main                        # Dispara en cada commit a main
   paths:
     include:
-      - frontend/**
+      - frontend/**                 # Solo cuando hay cambios en el frontend
       - .azure-pipelines/frontend.yml
 
-pr:
-  branches:
-    include:
-      - dev
-  paths:
-    include:
-      - frontend/**
+pr: none                            # No corre en Pull Requests
 
 pool:
   vmImage: ubuntu-latest
@@ -49,7 +43,7 @@ stages:
     displayName: '🔨 Build Angular'
     jobs:
       - job: Build
-        displayName: 'npm install + ng build'
+        displayName: 'npm ci + ng build production'
         steps:
           - checkout: self
             fetchDepth: 1
@@ -74,17 +68,17 @@ stages:
             displayName: 'Publicar artefacto frontend-dist'
 
   # ────────────────────────────────────────────────────────
-  #  STAGE 2: Deploy a S3 + invalidar CloudFront
-  #  Solo en push directo a dev (no en PRs)
+  #  STAGE 2: Deploy → S3 + Invalidar CloudFront
+  #  Corre en cada push a main (nunca en PRs)
   # ────────────────────────────────────────────────────────
   - stage: Deploy
     displayName: '🚀 Deploy → S3 + CloudFront'
     dependsOn: Build
-    condition: and(succeeded(), ne(variables['Build.Reason'], 'PullRequest'), eq(variables['Build.SourceBranchName'], 'dev'))
+    condition: succeeded()
     jobs:
       - deployment: DeployFrontend
-        displayName: 'Sync S3 + Invalidar CF'
-        environment: 'dev'
+        displayName: 'Sync S3 + Invalidar CloudFront'
+        environment: 'frontend-main'
         strategy:
           runOnce:
             deploy:
@@ -94,7 +88,7 @@ stages:
                   displayName: 'Descargar artefacto'
 
                 - task: AWSShellScript@1
-                  displayName: 'Sync S3 + Invalidar CloudFront'
+                  displayName: 'aws s3 sync + cloudfront invalidation'
                   inputs:
                     awsCredentials: $(AWS_SERVICE_CONNECTION)
                     regionName: $(AWS_REGION)
@@ -104,53 +98,64 @@ stages:
 
                       DIST_DIR="$(Pipeline.Workspace)/frontend-dist"
 
-                      # ── Validar variables ──────────────────────────────
+                      # ── Validar variables requeridas ───────────────────
                       if [ -z "${S3_FRONTEND_BUCKET:-}" ]; then
-                        echo "##[error]Variable S3_FRONTEND_BUCKET no definida en el pipeline."
+                        echo "##[error]Variable S3_FRONTEND_BUCKET no definida."
+                        echo "##[error]Ve a: Pipeline → Edit → Variables → (+) → S3_FRONTEND_BUCKET"
                         exit 1
                       fi
 
                       if [ -z "${CLOUDFRONT_DIST_ID:-}" ]; then
-                        echo "##[error]Variable CLOUDFRONT_DIST_ID no definida en el pipeline."
+                        echo "##[error]Variable CLOUDFRONT_DIST_ID no definida."
+                        echo "##[error]Ve a: Pipeline → Edit → Variables → (+) → CLOUDFRONT_DIST_ID"
                         exit 1
                       fi
 
-                      echo "── Bucket: ${S3_FRONTEND_BUCKET} ──"
-                      echo "── CloudFront: ${CLOUDFRONT_DIST_ID} ──"
+                      echo "────────────────────────────────────────────"
+                      echo " Bucket S3   : ${S3_FRONTEND_BUCKET}"
+                      echo " CloudFront  : ${CLOUDFRONT_DIST_ID}"
+                      echo " Build dir   : ${DIST_DIR}"
+                      echo "────────────────────────────────────────────"
 
-                      # ── Sync a S3 ─────────────────────────────────────
-                      # Archivos con hash en el nombre → caché largo (1 año)
-                      aws s3 sync "$DIST_DIR" "s3://${S3_FRONTEND_BUCKET}" \
+                      # ── Archivos con hash (JS, CSS, fuentes, imágenes) ─
+                      # Angular genera nombres únicos con hash → caché máximo (1 año)
+                      echo "⬆️  Subiendo assets con caché inmutable..."
+                      aws s3 sync "${DIST_DIR}" "s3://${S3_FRONTEND_BUCKET}" \
                         --delete \
                         --cache-control "public,max-age=31536000,immutable" \
                         --exclude "*.html" \
                         --exclude "*.json"
 
-                      # HTML y JSON → sin caché (siempre frescos)
-                      aws s3 sync "$DIST_DIR" "s3://${S3_FRONTEND_BUCKET}" \
-                        --delete \
+                      # ── HTML y JSON sin caché ──────────────────────────
+                      # index.html y ngsw.json deben estar siempre frescos
+                      echo "⬆️  Subiendo HTML/JSON sin caché..."
+                      aws s3 sync "${DIST_DIR}" "s3://${S3_FRONTEND_BUCKET}" \
                         --cache-control "no-cache,no-store,must-revalidate" \
                         --include "*.html" \
                         --include "*.json"
 
                       echo "✅ S3 sync completado"
 
-                      # ── Invalidar CloudFront ───────────────────────────
+                      # ── Crear invalidación de CloudFront ───────────────
+                      echo "🔄 Invalidando caché de CloudFront..."
                       INVALIDATION_ID=$(aws cloudfront create-invalidation \
                         --distribution-id "${CLOUDFRONT_DIST_ID}" \
                         --paths "/*" \
                         --query 'Invalidation.Id' \
                         --output text)
 
-                      echo "✅ Invalidación creada: ${INVALIDATION_ID}"
+                      echo "   Invalidation ID: ${INVALIDATION_ID}"
 
-                      # Esperar hasta que la invalidación complete
-                      echo "⏳ Esperando invalidación de CloudFront..."
+                      # ── Esperar a que la invalidación complete ──────────
+                      echo "⏳ Esperando que la invalidación complete..."
                       aws cloudfront wait invalidation-completed \
                         --distribution-id "${CLOUDFRONT_DIST_ID}" \
                         --id "${INVALIDATION_ID}"
 
-                      echo "✅ Deploy completado. Sitio disponible en CloudFront."
+                      echo "✅ CloudFront invalidado correctamente"
+                      echo "────────────────────────────────────────────"
+                      echo "🌐 Deploy completado. El sitio ya está actualizado."
+                      echo "────────────────────────────────────────────"
                   env:
                     S3_FRONTEND_BUCKET: $(S3_FRONTEND_BUCKET)
                     CLOUDFRONT_DIST_ID: $(CLOUDFRONT_DIST_ID)
