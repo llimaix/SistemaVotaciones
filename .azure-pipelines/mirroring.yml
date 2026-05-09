@@ -1,9 +1,9 @@
 trigger:
   branches:
     include:
-      - main   # Solo dispara cuando llegan cambios a main
+      - main
 
-pr: none   # No corre en Pull Requests
+pr: none
 
 pool:
   vmImage: ubuntu-latest

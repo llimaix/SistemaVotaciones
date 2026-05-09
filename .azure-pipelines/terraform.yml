@@ -28,17 +28,12 @@ variables:
 
 stages:
 
-  # ────────────────────────────────────────────────────────
-  #  STAGE 0: Bootstrap
-  #  Idempotente — crea el bucket S3 y la tabla DynamoDB
-  #  solo si no existen. Seguro de ejecutar siempre.
-  # ────────────────────────────────────────────────────────
   - stage: Bootstrap
-    displayName: "⚙️ Bootstrap Remote State"
+    displayName: "Bootstrap Remote State"
     condition: ne(variables['Build.Reason'], 'PullRequest')
     jobs:
       - job: Bootstrap
-        displayName: "Bucket S3 + DynamoDB para TF state"
+        displayName: "S3 bucket + DynamoDB lock table"
         steps:
           - checkout: self
             fetchDepth: 1
@@ -51,13 +46,9 @@ stages:
               scriptType: filePath
               filePath: "infra/scripts/bootstrap.sh"
 
-  # ────────────────────────────────────────────────────────
-  #  STAGE 1: Validate — fmt -check + terraform validate
-  #  Corre en push y en PRs
-  # ────────────────────────────────────────────────────────
   - stage: Validate
-    displayName: "🔍 Validate"
-    dependsOn: []   # No depende de Bootstrap (también corre en PRs)
+    displayName: "Validate"
+    dependsOn: []
     jobs:
       - job: ValidateDev
         displayName: "Validate DEV"
@@ -69,12 +60,8 @@ stages:
               awsServiceConnection: $(AWS_SERVICE_CONNECTION)
               awsRegion: $(AWS_REGION)
 
-  # ────────────────────────────────────────────────────────
-  #  STAGE 2: Plan — genera el tfplan
-  #  Solo en push (no en PRs)
-  # ────────────────────────────────────────────────────────
   - stage: Plan
-    displayName: "📋 Plan DEV"
+    displayName: "Plan DEV"
     dependsOn:
       - Bootstrap
       - Validate
@@ -91,11 +78,8 @@ stages:
               awsServiceConnection: $(AWS_SERVICE_CONNECTION)
               awsRegion: $(AWS_REGION)
 
-  # ──────────────────────────────────────────────────────── plan generado
-  #  Solo en push a main o dev (no en PRs)
-  # ────────────────────────────────────────────────────────
   - stage: Apply
-    displayName: "🚀 Apply DEV"
+    displayName: "Apply DEV"
     dependsOn: Plan
     condition: and(succeeded(), ne(variables['Build.Reason'], 'PullRequest'), eq(variables['Build.SourceBranchName'], 'dev'))
     jobs:
@@ -112,4 +96,3 @@ stages:
                     tfCommand: apply
                     awsServiceConnection: $(AWS_SERVICE_CONNECTION)
                     awsRegion: $(AWS_REGION)
-
