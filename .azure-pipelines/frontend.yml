@@ -29,7 +29,7 @@ pool:
   vmImage: ubuntu-latest
 
 variables:
-  NODE_VERSION: '20.x'
+  NODE_VERSION: '24.x'
   AWS_SERVICE_CONNECTION: 'aws-sistema-votaciones'
   AWS_REGION: 'us-east-1'
   BUILD_DIR: 'frontend/dist/sistema-votaciones/browser'
