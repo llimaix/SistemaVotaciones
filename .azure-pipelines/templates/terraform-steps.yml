@@ -1,21 +1,12 @@
-# ============================================================
-#  Template: terraform-steps.yml
-#  Pasos reutilizables para Terraform con AWS Service Connection.
-#
-#  Parámetros:
-#    environment          → dev
-#    tfCommand            → validate | plan | apply
-#    savePlan             → true si se quiere publicar el plan
-#    awsServiceConnection → nombre de la Service Connection AWS
-#    awsRegion            → región AWS
-# ============================================================
+# Pasos reutilizables de Terraform con AWS Service Connection.
+# Soporta: validate | plan | apply
 
 parameters:
   - name: environment
     type: string
     default: dev
   - name: tfCommand
-    type: string              # validate | plan | apply
+    type: string
   - name: savePlan
     type: boolean
     default: false
@@ -30,7 +21,6 @@ steps:
   - checkout: self
     fetchDepth: 1
 
-  # ── terraform fmt -check + validate ──────────────────────
   - ${{ if eq(parameters.tfCommand, 'validate') }}:
     - task: AWSShellScript@1
       displayName: "terraform fmt + validate (${{ parameters.environment }})"
@@ -41,27 +31,19 @@ steps:
         inlineScript: |
           set -euo pipefail
 
-          # ── Instalar Terraform si no está disponible ──────
           TF_VERSION="$(TF_VERSION)"
           if ! terraform version 2>/dev/null | grep -q "${TF_VERSION}"; then
-            echo "── Instalando Terraform ${TF_VERSION} ──────────────"
             curl -fsSL "https://releases.hashicorp.com/terraform/${TF_VERSION}/terraform_${TF_VERSION}_linux_amd64.zip" \
               -o /tmp/terraform.zip
             unzip -o /tmp/terraform.zip -d /usr/local/bin/
             chmod +x /usr/local/bin/terraform
           fi
-          terraform version
 
           cd "$(TF_ROOT)/${{ parameters.environment }}"
-          echo "── terraform fmt -check ──────────────────────────"
           terraform fmt -check -recursive ../../
-          echo "── terraform init (sin backend) ──────────────────"
           terraform init -backend=false -input=false
-          echo "── terraform validate ────────────────────────────"
           terraform validate
-          echo "✓ Validate OK (${{ parameters.environment }})"
 
-  # ── terraform plan ────────────────────────────────────────
   - ${{ if eq(parameters.tfCommand, 'plan') }}:
     - task: AWSShellScript@1
       displayName: "terraform init + plan (${{ parameters.environment }})"
@@ -72,36 +54,28 @@ steps:
         inlineScript: |
           set -euo pipefail
 
-          # ── Instalar Terraform si no está disponible ──────
           TF_VERSION="$(TF_VERSION)"
           if ! terraform version 2>/dev/null | grep -q "${TF_VERSION}"; then
-            echo "── Instalando Terraform ${TF_VERSION} ──────────────"
             curl -fsSL "https://releases.hashicorp.com/terraform/${TF_VERSION}/terraform_${TF_VERSION}_linux_amd64.zip" \
               -o /tmp/terraform.zip
             unzip -o /tmp/terraform.zip -d /usr/local/bin/
             chmod +x /usr/local/bin/terraform
           fi
-          terraform version
 
           cd "$(TF_ROOT)/${{ parameters.environment }}"
-          echo "── terraform init ────────────────────────────────"
           terraform init -input=false
-          echo "── terraform plan ────────────────────────────────"
           terraform plan \
             -input=false \
             -var-file="terraform.tfvars" \
             -out="$(Build.ArtifactStagingDirectory)/tfplan-${{ parameters.environment }}"
-          echo "── Resumen ───────────────────────────────────────"
           terraform show -no-color \
             "$(Build.ArtifactStagingDirectory)/tfplan-${{ parameters.environment }}" | tail -20
-          echo "✓ Plan OK (${{ parameters.environment }})"
 
     - ${{ if parameters.savePlan }}:
       - publish: $(Build.ArtifactStagingDirectory)
         artifact: tfplan-${{ parameters.environment }}
         displayName: "Publicar plan (${{ parameters.environment }})"
 
-  # ── terraform apply ───────────────────────────────────────
   - ${{ if eq(parameters.tfCommand, 'apply') }}:
     - download: current
       artifact: tfplan-${{ parameters.environment }}
@@ -116,28 +90,19 @@ steps:
         inlineScript: |
           set -euo pipefail
 
-          # ── Instalar Terraform si no está disponible ──────
           TF_VERSION="$(TF_VERSION)"
           if ! terraform version 2>/dev/null | grep -q "${TF_VERSION}"; then
-            echo "── Instalando Terraform ${TF_VERSION} ──────────────"
             curl -fsSL "https://releases.hashicorp.com/terraform/${TF_VERSION}/terraform_${TF_VERSION}_linux_amd64.zip" \
               -o /tmp/terraform.zip
             unzip -o /tmp/terraform.zip -d /usr/local/bin/
             chmod +x /usr/local/bin/terraform
           fi
-          terraform version
 
           cd "$(TF_ROOT)/${{ parameters.environment }}"
-          echo "── terraform init ────────────────────────────────"
           terraform init -input=false
-          echo "── terraform apply ───────────────────────────────"
           terraform apply \
             -input=false \
             -auto-approve \
             "$(Pipeline.Workspace)/tfplan-${{ parameters.environment }}/tfplan-${{ parameters.environment }}"
-          echo ""
-          echo "── Outputs ───────────────────────────────────────"
           terraform output
-          echo "✓ Apply OK (${{ parameters.environment }})"
-          echo "✓ Apply OK (${{ parameters.environment }})"
 

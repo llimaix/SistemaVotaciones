@@ -1,18 +1,10 @@
-# ============================================================
-#  frontend.yml
-#  CI/CD del Frontend Angular → S3 + CloudFront
+# Pipeline de build y deploy del frontend Angular.
+# Trigger: commits a main con cambios en frontend/.
+# Deploy: S3 sync + invalidacion de CloudFront.
 #
-#  Trigger: cada commit en la rama `main`
-#  Flujo:   Build → Deploy S3 → Invalidar CloudFront
-#
-#  Requisitos en Azure DevOps (Pipeline → Edit → Variables):
-#  · S3_FRONTEND_BUCKET  → nombre del bucket S3 del frontend
-#                          (output "s3_frontend_bucket" de Terraform)
-#  · CLOUDFRONT_DIST_ID  → ID de la distribución CloudFront
-#                          (output "cloudfront_distribution_id" de Terraform)
-#
-#  Service Connection AWS: "aws-sistema-votaciones"
-# ============================================================
+# Variables requeridas en el pipeline:
+#   S3_FRONTEND_BUCKET  - nombre del bucket S3 (output de Terraform)
+#   CLOUDFRONT_DIST_ID  - ID de la distribucion CloudFront (output de Terraform)
 
 trigger:
   branches:
@@ -36,14 +28,11 @@ variables:
 
 stages:
 
-  # ────────────────────────────────────────────────────────
-  #  STAGE 1: Build
-  # ────────────────────────────────────────────────────────
   - stage: Build
-    displayName: '🔨 Build Angular'
+    displayName: "Build Angular"
     jobs:
       - job: Build
-        displayName: 'npm ci + ng build production'
+        displayName: "npm ci + ng build production"
         steps:
           - checkout: self
             fetchDepth: 1
@@ -67,24 +56,20 @@ stages:
             artifact: frontend-dist
             displayName: 'Publicar artefacto frontend-dist'
 
-  # ────────────────────────────────────────────────────────
-  #  STAGE 2: Deploy → S3 + Invalidar CloudFront
-  #  Corre en cada push a main (nunca en PRs)
-  # ────────────────────────────────────────────────────────
   - stage: Deploy
-    displayName: '🚀 Deploy → S3 + CloudFront'
+    displayName: "Deploy S3 + CloudFront"
     dependsOn: Build
     condition: succeeded()
     jobs:
       - job: DeployFrontend
-        displayName: 'Sync S3 + Invalidar CloudFront'
+        displayName: "Sync S3 + Invalidar CloudFront"
         steps:
           - download: current
             artifact: frontend-dist
             displayName: 'Descargar artefacto'
 
           - task: AWSShellScript@1
-            displayName: 'aws s3 sync + cloudfront invalidation'
+            displayName: "aws s3 sync + cloudfront invalidation"
             inputs:
               awsCredentials: $(AWS_SERVICE_CONNECTION)
               regionName: $(AWS_REGION)
@@ -94,62 +79,38 @@ stages:
 
                 DIST_DIR="$(Pipeline.Workspace)/frontend-dist"
 
-                # ── Validar variables requeridas ─────────────────────
                 if [ -z "${S3_FRONTEND_BUCKET:-}" ]; then
                   echo "##[error]Variable S3_FRONTEND_BUCKET no definida."
-                  echo "##[error]Ve a: Pipeline → Edit → Variables → (+) → S3_FRONTEND_BUCKET"
                   exit 1
                 fi
 
                 if [ -z "${CLOUDFRONT_DIST_ID:-}" ]; then
                   echo "##[error]Variable CLOUDFRONT_DIST_ID no definida."
-                  echo "##[error]Ve a: Pipeline → Edit → Variables → (+) → CLOUDFRONT_DIST_ID"
                   exit 1
                 fi
 
-                echo "────────────────────────────────────────────"
-                echo " Bucket S3   : ${S3_FRONTEND_BUCKET}"
-                echo " CloudFront  : ${CLOUDFRONT_DIST_ID}"
-                echo " Build dir   : ${DIST_DIR}"
-                echo "────────────────────────────────────────────"
-
-                # ── Assets con hash → caché máximo (1 año) ──────────
-                echo "⬆️  Subiendo assets con caché inmutable..."
+                # Archivos con hash en nombre (JS, CSS) -> cache largo
                 aws s3 sync "${DIST_DIR}" "s3://${S3_FRONTEND_BUCKET}" \
                   --delete \
                   --cache-control "public,max-age=31536000,immutable" \
                   --exclude "*.html" \
                   --exclude "*.json"
 
-                # ── HTML y JSON → sin caché ──────────────────────────
-                echo "⬆️  Subiendo HTML/JSON sin caché..."
+                # HTML y JSON -> sin cache para que siempre se sirva la version nueva
                 aws s3 sync "${DIST_DIR}" "s3://${S3_FRONTEND_BUCKET}" \
                   --cache-control "no-cache,no-store,must-revalidate" \
                   --include "*.html" \
                   --include "*.json"
 
-                echo "✅ S3 sync completado"
-
-                # ── Crear invalidación de CloudFront ─────────────────
-                echo "🔄 Invalidando caché de CloudFront..."
                 INVALIDATION_ID=$(aws cloudfront create-invalidation \
                   --distribution-id "${CLOUDFRONT_DIST_ID}" \
                   --paths "/*" \
                   --query 'Invalidation.Id' \
                   --output text)
 
-                echo "   Invalidation ID: ${INVALIDATION_ID}"
-
-                # ── Esperar a que la invalidación complete ────────────
-                echo "⏳ Esperando que la invalidación complete..."
                 aws cloudfront wait invalidation-completed \
                   --distribution-id "${CLOUDFRONT_DIST_ID}" \
                   --id "${INVALIDATION_ID}"
-
-                echo "✅ CloudFront invalidado correctamente"
-                echo "────────────────────────────────────────────"
-                echo "🌐 Deploy completado. El sitio ya está actualizado."
-                echo "────────────────────────────────────────────"
             env:
               S3_FRONTEND_BUCKET: $(S3_FRONTEND_BUCKET)
               CLOUDFRONT_DIST_ID: $(CLOUDFRONT_DIST_ID)

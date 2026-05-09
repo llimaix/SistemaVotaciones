@@ -1,17 +1,3 @@
-# ============================================================
-#  Módulo: secrets_manager
-#  Crea secretos VACÍOS en AWS Secrets Manager cifrados con
-#  una KMS key dedicada.
-#
-#  Los secretos a crear se controlan completamente desde el
-#  tfvars: agregar/quitar entradas del mapa `secrets` crea
-#  o destruye el secreto correspondiente.
-#
-#  Los VALORES se rellenan manualmente desde la consola AWS
-#  o mediante rotación automática; Terraform no los gestiona.
-# ============================================================
-
-# ── KMS Key dedicada para cifrar los secretos ─────────────
 resource "aws_kms_key" "secrets" {
   description             = "KMS key para secretos de ${var.project}-${var.environment}"
   deletion_window_in_days = var.kms_deletion_window_days
@@ -25,11 +11,9 @@ resource "aws_kms_alias" "secrets" {
   target_key_id = aws_kms_key.secrets.key_id
 }
 
-# ── Secretos (controlados por el mapa en tfvars) ──────────
-# Cada entrada del mapa genera un secreto vacío.
-# Nombre en AWS: /{project}/{environment}/{key}
-# Para CREAR un secreto → agregar al mapa en tfvars.
-# Para ELIMINAR un secreto → quitar del mapa en tfvars + apply.
+# Cada entrada del mapa var.secrets genera un secreto vacio.
+# Para crear un secreto -> agregar al mapa en tfvars.
+# Para eliminarlo -> quitar del mapa + apply.
 resource "aws_secretsmanager_secret" "secrets" {
   for_each = var.secrets
 
@@ -44,8 +28,6 @@ resource "aws_secretsmanager_secret" "secrets" {
   })
 }
 
-# ── Política de acceso: lectura para roles Lambda/CI ──────
-# Solo se aplica cuando se proporcionan ARNs.
 data "aws_iam_policy_document" "secrets_read" {
   count = length(var.allowed_read_arns) > 0 ? 1 : 0
 
