@@ -55,6 +55,33 @@ module "s3_serverless" {
   tags = local.common_tags
 }
 
+# ── 5. Secrets Manager ───────────────────────────────────
+module "secrets_manager" {
+  source = "../../modules/secrets_manager"
+
+  project     = var.project
+  environment = var.environment
+
+  # Ventana de recuperación estándar en prod
+  recovery_window_days     = 30
+  kms_deletion_window_days = 30
+
+  db_host     = var.db_host
+  db_port     = var.db_port
+  db_name     = var.db_name
+  db_username = var.db_username
+  db_password = var.db_password
+
+  jwt_secret_value = var.jwt_secret_value
+
+  s3_multimedia_bucket = module.s3_multimedia.bucket_id
+  cloudfront_domain    = module.cloudfront.distribution_domain_name
+
+  allowed_read_arns = var.lambda_role_arns
+
+  tags = local.common_tags
+}
+
 locals {
   common_tags = {
     Project     = var.project

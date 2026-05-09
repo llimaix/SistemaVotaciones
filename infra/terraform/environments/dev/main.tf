@@ -60,6 +60,37 @@ module "s3_serverless" {
   tags = local.common_tags
 }
 
+# ── 5. Secrets Manager ───────────────────────────────────
+module "secrets_manager" {
+  source = "../../modules/secrets_manager"
+
+  project     = var.project
+  environment = var.environment
+
+  # Ventana corta en dev para facilitar recreación durante desarrollo
+  recovery_window_days     = 0
+  kms_deletion_window_days = 7
+
+  # Datos de la BD independiente (valores placeholder; actualizar en pipeline o manualmente)
+  db_host     = var.db_host
+  db_port     = var.db_port
+  db_name     = var.db_name
+  db_username = var.db_username
+  db_password = var.db_password
+
+  # JWT (placeholder; rotar via Secrets Manager console/pipeline)
+  jwt_secret_value = var.jwt_secret_value
+
+  # Referencias a recursos creados en este mismo entorno
+  s3_multimedia_bucket = module.s3_multimedia.bucket_id
+  cloudfront_domain    = module.cloudfront.distribution_domain_name
+
+  # Roles Lambda (vacío hasta que se desplieguen las funciones con Serverless Framework)
+  allowed_read_arns = var.lambda_role_arns
+
+  tags = local.common_tags
+}
+
 # ── Locals ────────────────────────────────────────────────
 locals {
   common_tags = {

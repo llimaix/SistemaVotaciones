@@ -1,0 +1,144 @@
+# ============================================================
+#  bootstrap.yml
+#  Pipeline de Azure DevOps — Bootstrap del estado remoto
+#
+#  Propósito: crear el bucket S3 y la tabla DynamoDB que
+#  Terraform necesita ANTES del primer `terraform init`.
+#
+#  Ejecución: MANUAL, UNA SOLA VEZ por cuenta AWS.
+#             Es idempotente; si ya existe, no falla.
+#
+#  Autenticación: usa una AWS Service Connection configurada
+#  en el proyecto Azure DevOps (requiere extensión
+#  "AWS Tools for Microsoft Azure DevOps").
+#
+#  Cómo configurar la Service Connection:
+#    1. Azure DevOps → Project Settings → Service Connections
+#    2. New → "AWS for Microsoft Azure DevOps"
+#    3. Ingresar Access Key ID y Secret Access Key del rol IAM
+#    4. Nombre de la conexión: aws-sistema-votaciones
+# ============================================================
+
+trigger: none   # Solo ejecución manual
+
+pool:
+  vmImage: ubuntu-latest
+
+parameters:
+  - name: awsRegion
+    displayName: "Región AWS"
+    type: string
+    default: "us-east-1"
+  - name: stateBucket
+    displayName: "Nombre del bucket de estado Terraform"
+    type: string
+    default: "sistema-votaciones-tf-state"
+  - name: lockTable
+    displayName: "Nombre de la tabla DynamoDB de locking"
+    type: string
+    default: "sistema-votaciones-tf-locks"
+  - name: confirmRun
+    displayName: "¿Confirmas que este bootstrap aún no se ha ejecutado en esta cuenta?"
+    type: boolean
+    default: false
+
+variables:
+  awsServiceConnection: "aws-sistema-votaciones"
+
+stages:
+  # ── Stage 1: Validar confirmación ─────────────────────────
+  - stage: PreCheck
+    displayName: "Pre-check"
+    jobs:
+      - job: ConfirmBootstrap
+        displayName: "Verificar confirmación manual"
+        steps:
+          - script: |
+              if [ "${{ parameters.confirmRun }}" != "True" ]; then
+                echo "##vso[task.logissue type=error]Debes activar el parámetro 'confirmRun' para ejecutar el bootstrap."
+                echo "##vso[task.complete result=Failed;]Confirmación no activada."
+                exit 1
+              fi
+              echo "✔ Confirmación activada. Procediendo con bootstrap."
+            displayName: "Verificar flag de confirmación"
+
+  # ── Stage 2: Bootstrap de infraestructura de estado ───────
+  - stage: Bootstrap
+    displayName: "Bootstrap — S3 + DynamoDB"
+    dependsOn: PreCheck
+    jobs:
+      - job: RunBootstrap
+        displayName: "Crear bucket de estado y tabla de locking"
+        steps:
+          - checkout: self
+            displayName: "Checkout del repositorio"
+
+          - task: AWSShellScript@1
+            displayName: "Ejecutar bootstrap.sh"
+            inputs:
+              awsCredentials: $(awsServiceConnection)
+              regionName: "${{ parameters.awsRegion }}"
+              scriptType: filePath
+              filePath: "infra/scripts/bootstrap.sh"
+              arguments: >
+                --region "${{ parameters.awsRegion }}"
+                --bucket "${{ parameters.stateBucket }}"
+                --table "${{ parameters.lockTable }}"
+            env:
+              TF_STATE_BUCKET: "${{ parameters.stateBucket }}"
+              TF_LOCK_TABLE: "${{ parameters.lockTable }}"
+              AWS_REGION: "${{ parameters.awsRegion }}"
+
+          - script: |
+              echo "##vso[task.setvariable variable=STATE_BUCKET;isOutput=true]${{ parameters.stateBucket }}"
+              echo "##vso[task.setvariable variable=LOCK_TABLE;isOutput=true]${{ parameters.lockTable }}"
+              echo ""
+              echo "==========================================="
+              echo " ✅ Bootstrap completado"
+              echo "    Bucket : s3://${{ parameters.stateBucket }}"
+              echo "    DynamoDB: ${{ parameters.lockTable }}"
+              echo "==========================================="
+              echo ""
+              echo " Siguiente paso: ejecuta el pipeline terraform-infra.yml"
+            displayName: "Resumen del bootstrap"
+
+  # ── Stage 3: Validar que los recursos existen ─────────────
+  - stage: Validate
+    displayName: "Validar recursos creados"
+    dependsOn: Bootstrap
+    jobs:
+      - job: ValidateResources
+        displayName: "Verificar bucket y tabla vía AWS CLI"
+        steps:
+          - task: AWSShellScript@1
+            displayName: "Verificar bucket S3"
+            inputs:
+              awsCredentials: $(awsServiceConnection)
+              regionName: "${{ parameters.awsRegion }}"
+              scriptType: inline
+              inlineScript: |
+                set -euo pipefail
+                echo "Verificando bucket: ${{ parameters.stateBucket }}"
+                aws s3api head-bucket --bucket "${{ parameters.stateBucket }}"
+                echo "✓ Bucket OK"
+
+                VERSIONING=$(aws s3api get-bucket-versioning \
+                  --bucket "${{ parameters.stateBucket }}" \
+                  --query "Status" --output text)
+                [ "${VERSIONING}" = "Enabled" ] && echo "✓ Versioning OK" || echo "⚠ Versioning no activo"
+
+          - task: AWSShellScript@1
+            displayName: "Verificar tabla DynamoDB"
+            inputs:
+              awsCredentials: $(awsServiceConnection)
+              regionName: "${{ parameters.awsRegion }}"
+              scriptType: inline
+              inlineScript: |
+                set -euo pipefail
+                echo "Verificando tabla: ${{ parameters.lockTable }}"
+                STATUS=$(aws dynamodb describe-table \
+                  --table-name "${{ parameters.lockTable }}" \
+                  --region "${{ parameters.awsRegion }}" \
+                  --query "Table.TableStatus" --output text)
+                echo "  Estado: ${STATUS}"
+                [ "${STATUS}" = "ACTIVE" ] && echo "✓ Tabla ACTIVE OK" || { echo "✗ Tabla no está ACTIVE"; exit 1; }

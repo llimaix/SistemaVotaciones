@@ -17,27 +17,27 @@ steps:
   - checkout: self
     fetchDepth: 1
 
-  # ── Instalar Terraform ───────────────────────────────────
+  # ── Instalar / verificar Terraform ──────────────────────
   - script: |
       set -euo pipefail
+      # Si ya está instalado en el agente, usar el existente
+      if command -v terraform &>/dev/null; then
+        echo "Terraform ya disponible: $(terraform version | head -1)"
+        exit 0
+      fi
+
+      # Si no está, descargarlo
       TERRAFORM_VERSION="$(TF_VERSION)"
       TF_BIN="$HOME/.terraform-bin"
       mkdir -p "$TF_BIN"
-
-      if ! command -v terraform &>/dev/null || \
-         [ "$(terraform version -json | python3 -c 'import sys,json; print(json.load(sys.stdin)["terraform_version"])')" != "$TERRAFORM_VERSION" ]; then
-        echo "Descargando Terraform ${TERRAFORM_VERSION}..."
-        curl -fsSL "https://releases.hashicorp.com/terraform/${TERRAFORM_VERSION}/terraform_${TERRAFORM_VERSION}_linux_amd64.zip" \
-          -o /tmp/terraform.zip
-        unzip -o /tmp/terraform.zip -d "$TF_BIN"
-        chmod +x "$TF_BIN/terraform"
-      else
-        echo "Terraform ${TERRAFORM_VERSION} ya instalado."
-      fi
-
+      echo "Descargando Terraform ${TERRAFORM_VERSION}..."
+      curl -fsSL "https://releases.hashicorp.com/terraform/${TERRAFORM_VERSION}/terraform_${TERRAFORM_VERSION}_linux_amd64.zip" \
+        -o /tmp/terraform.zip
+      unzip -o /tmp/terraform.zip -d "$TF_BIN"
+      chmod +x "$TF_BIN/terraform"
       echo "##vso[task.prependpath]$TF_BIN"
       terraform version
-    displayName: 'Instalar Terraform $(TF_VERSION)'
+    displayName: 'Verificar Terraform'
 
   # ── Configurar credenciales AWS ──────────────────────────
   - script: |
