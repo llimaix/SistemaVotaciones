@@ -3,22 +3,18 @@
 #  Mirror de Azure DevOps → GitHub
 #
 #  Cada push a `main` en Azure DevOps replica el contenido
-#  a la rama `main` de github.com/llimaix/SistemaVotaciones
+#  a la rama `main` del repo definido en GITHUB_REPO
 #
-#  Configuración requerida (una sola vez):
+#  Configuración requerida (una sola vez en el pipeline):
 #  ─────────────────────────────────────────────────────────
-#  1. Crear un GitHub Personal Access Token (PAT):
-#     GitHub → Settings → Developer Settings
-#     → Fine-grained tokens → New token
-#     → Permisos: Contents: Read and Write
-#       (solo el repo llimaix/SistemaVotaciones)
+#  Pipeline → Edit → Variables → (+)
 #
-#  2. Guardar el PAT como variable secreta en ESTE pipeline:
-#     Pipeline → Edit → Variables → (+)
-#     → Nombre: GITHUB_PAT
-#     → Valor: el token
-#     → ✅ Keep this value secret
-#     → Guardar
+#  1. GITHUB_TOKEN  → tu GitHub Personal Access Token
+#                    (Contents: Read & Write en el repo)
+#                    ✅ Keep this value secret
+#
+#  2. GITHUB_REPO   → URL HTTPS del repo destino, sin token
+#                    Ejemplo: https://github.com/llimaix/SistemaVotaciones.git
 #
 #  Sin Library. Sin Variable Groups.
 # ============================================================
@@ -42,18 +38,52 @@ steps:
   - script: |
       set -euo pipefail
 
-      git config user.email "azure-mirror-bot@noreply.com"
-      git config user.name  "Azure Mirror Bot"
+      # ── Validar variables requeridas ──────────────────────
+      if [ -z "${GITHUB_TOKEN:-}" ]; then
+        echo "##[error]La variable GITHUB_TOKEN no está definida en el pipeline."
+        echo "##[error]Ve a: Pipeline → Edit → Variables → (+) → Nombre: GITHUB_TOKEN → Keep this value secret"
+        exit 1
+      fi
 
-      GITHUB_URL="https://$(GITHUB_PAT)@github.com/llimaix/SistemaVotaciones.git"
+      if [ -z "${GITHUB_REPO:-}" ]; then
+        echo "##[error]La variable GITHUB_REPO no está definida en el pipeline."
+        echo "##[error]Ejemplo de valor: https://github.com/llimaix/SistemaVotaciones.git"
+        exit 1
+      fi
+
+      # ── Validar usuario de git CLI ────────────────────────
+      GIT_USER=$(git config --global user.name 2>/dev/null || echo "")
+      echo "Git user.name configurado: '${GIT_USER}'"
+
+      case "${GIT_USER}" in
+        "Luis Lima"|"llima")
+          echo "✅ Usuario de git validado: ${GIT_USER}"
+          ;;
+        "")
+          echo "##[warning]git user.name no está configurado globalmente (se usará la identidad del pipeline)."
+          ;;
+        *)
+          echo "##[warning]Git user.name es '${GIT_USER}' (se esperaba 'Luis Lima' o 'llima')."
+          ;;
+      esac
+
+      # ── Configurar identidad para el commit del mirror ────
+      git config user.email "llima@noreply.com"
+      git config user.name  "Luis Lima"
+
+      # ── Construir URL autenticada ─────────────────────────
+      # Extrae la parte después de "https://" para insertar el token
+      REPO_PATH="${GITHUB_REPO#https://}"
+      GITHUB_URL="https://${GITHUB_TOKEN}@${REPO_PATH}"
 
       git remote add github "$GITHUB_URL" 2>/dev/null \
         || git remote set-url github "$GITHUB_URL"
 
-      echo "── Pushing main → github.com/llimaix/SistemaVotaciones ──"
+      echo "── Pushing main → ${GITHUB_REPO} ──"
       git push github "HEAD:refs/heads/main"
 
       echo "✅ Mirror completado"
     displayName: "Mirror → GitHub main"
     env:
-      GITHUB_PAT: $(GITHUB_PAT)
+      GITHUB_TOKEN: $(GITHUB_TOKEN)
+      GITHUB_REPO: $(GITHUB_REPO)
