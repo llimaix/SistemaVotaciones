@@ -78,11 +78,7 @@ stages:
     dependsOn:
       - Bootstrap
       - Validate
-    condition: |
-      and(
-        succeeded('Validate'),
-        ne(variables['Build.Reason'], 'PullRequest')
-      )
+    condition: and(succeeded('Validate'), ne(variables['Build.Reason'], 'PullRequest'))
     jobs:
       - job: PlanDev
         displayName: "terraform plan (dev)"
@@ -101,12 +97,7 @@ stages:
   - stage: Apply
     displayName: "🚀 Apply DEV"
     dependsOn: Plan
-    condition: |
-      and(
-        succeeded(),
-        ne(variables['Build.Reason'], 'PullRequest'),
-        eq(variables['Build.SourceBranchName'], 'dev')
-      )
+    condition: and(succeeded(), ne(variables['Build.Reason'], 'PullRequest'), eq(variables['Build.SourceBranchName'], 'dev'))
     jobs:
       - deployment: ApplyDev
         displayName: "terraform apply (dev)"
