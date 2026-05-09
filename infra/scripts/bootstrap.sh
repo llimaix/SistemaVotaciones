@@ -1,25 +1,3 @@
-#!/usr/bin/env bash
-# ============================================================
-#  bootstrap.sh
-#  Crea el bucket S3 de estado remoto y la tabla DynamoDB
-#  para el locking de Terraform.
-#
-#  Ejecutar UNA SOLA VEZ antes del primer `terraform init`.
-#  El script es idempotente: si los recursos ya existen, los
-#  omite sin error.
-#
-#  Requiere: AWS CLI configurado con permisos suficientes.
-#
-#  Uso:
-#    chmod +x infra/scripts/bootstrap.sh
-#    ./infra/scripts/bootstrap.sh [--region us-east-1]
-#
-#  Variables de entorno opcionales:
-#    TF_STATE_BUCKET   → sobreescribe el nombre del bucket
-#    TF_LOCK_TABLE     → sobreescribe el nombre de la tabla
-#    AWS_REGION        → sobreescribe la región
-# ============================================================
-
 set -euo pipefail
 
 # ── Configuración ─────────────────────────────────────────
