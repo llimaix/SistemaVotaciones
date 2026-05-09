@@ -1,0 +1,132 @@
+<div class="login-page">
+  <!-- Fondo con partículas / gradiente -->
+  <div class="bg-gradient"></div>
+
+  <div class="login-container">
+    <!-- Logo / Branding -->
+    <div class="brand">
+      <div class="brand-icon">
+        <svg viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <rect width="48" height="48" rx="12" fill="url(#grad)" />
+          <path
+            d="M14 24l8 8 12-16"
+            stroke="#fff"
+            stroke-width="3.5"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+          />
+          <defs>
+            <linearGradient id="grad" x1="0" y1="0" x2="48" y2="48" gradientUnits="userSpaceOnUse">
+              <stop stop-color="#6366f1" />
+              <stop offset="1" stop-color="#8b5cf6" />
+            </linearGradient>
+          </defs>
+        </svg>
+      </div>
+      <h1 class="brand-name">Sistema de Votaciones</h1>
+      <p class="brand-subtitle">Plataforma electoral segura y transparente</p>
+    </div>
+
+    <!-- Card del formulario -->
+    <div class="card">
+      <div class="card-header">
+        <h2>Iniciar sesión</h2>
+        <p>Ingresa tus credenciales para continuar</p>
+      </div>
+
+      <form [formGroup]="loginForm" (ngSubmit)="onSubmit()" novalidate class="form">
+
+        <!-- Campo usuario -->
+        <div class="field" [class.has-error]="username.invalid && username.touched">
+          <label for="username">Usuario</label>
+          <div class="input-wrapper">
+            <span class="input-icon">
+              <svg viewBox="0 0 20 20" fill="currentColor">
+                <path d="M10 10a4 4 0 100-8 4 4 0 000 8zm-7 8a7 7 0 1114 0H3z" />
+              </svg>
+            </span>
+            <input
+              id="username"
+              type="text"
+              formControlName="username"
+              placeholder="Tu nombre de usuario"
+              autocomplete="username"
+            />
+          </div>
+          @if (username.invalid && username.touched) {
+            <span class="error-msg">
+              @if (username.errors?.['required']) { El usuario es requerido. }
+              @else if (username.errors?.['minlength']) { Mínimo 3 caracteres. }
+            </span>
+          }
+        </div>
+
+        <!-- Campo contraseña -->
+        <div class="field" [class.has-error]="password.invalid && password.touched">
+          <label for="password">Contraseña</label>
+          <div class="input-wrapper">
+            <span class="input-icon">
+              <svg viewBox="0 0 20 20" fill="currentColor">
+                <path fill-rule="evenodd" d="M5 9V7a5 5 0 0110 0v2a2 2 0 012 2v5a2 2 0 01-2 2H5a2 2 0 01-2-2v-5a2 2 0 012-2zm8-2v2H7V7a3 3 0 016 0z" clip-rule="evenodd" />
+              </svg>
+            </span>
+            <input
+              id="password"
+              [type]="showPassword() ? 'text' : 'password'"
+              formControlName="password"
+              placeholder="Tu contraseña"
+              autocomplete="current-password"
+            />
+            <button
+              type="button"
+              class="toggle-password"
+              (click)="togglePassword()"
+              [attr.aria-label]="showPassword() ? 'Ocultar contraseña' : 'Mostrar contraseña'"
+            >
+              @if (showPassword()) {
+                <svg viewBox="0 0 20 20" fill="currentColor">
+                  <path d="M10 12a2 2 0 100-4 2 2 0 000 4z" />
+                  <path fill-rule="evenodd" d="M.458 10C1.732 5.943 5.522 3 10 3s8.268 2.943 9.542 7c-1.274 4.057-5.064 7-9.542 7S1.732 14.057.458 10zM14 10a4 4 0 11-8 0 4 4 0 018 0z" clip-rule="evenodd" />
+                </svg>
+              } @else {
+                <svg viewBox="0 0 20 20" fill="currentColor">
+                  <path fill-rule="evenodd" d="M3.707 2.293a1 1 0 00-1.414 1.414l14 14a1 1 0 001.414-1.414l-1.473-1.473A10.014 10.014 0 0019.542 10C18.268 5.943 14.478 3 10 3a9.958 9.958 0 00-4.512 1.074l-1.78-1.781zm4.261 4.26l1.514 1.515a2.003 2.003 0 012.45 2.45l1.514 1.514a4 4 0 00-5.478-5.478z" clip-rule="evenodd" />
+                  <path d="M12.454 16.697L9.75 13.992a4 4 0 01-3.742-3.741L2.335 6.578A9.98 9.98 0 00.458 10c1.274 4.057 5.064 7 9.542 7 .847 0 1.669-.105 2.454-.303z" />
+                </svg>
+              }
+            </button>
+          </div>
+          @if (password.invalid && password.touched) {
+            <span class="error-msg">
+              @if (password.errors?.['required']) { La contraseña es requerida. }
+              @else if (password.errors?.['minlength']) { Mínimo 6 caracteres. }
+            </span>
+          }
+        </div>
+
+        <!-- Mensaje de error global -->
+        @if (errorMessage()) {
+          <div class="alert alert-error" role="alert">
+            <svg viewBox="0 0 20 20" fill="currentColor">
+              <path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z" clip-rule="evenodd" />
+            </svg>
+            {{ errorMessage() }}
+          </div>
+        }
+
+        <!-- Botón submit -->
+        <button type="submit" class="btn-primary" [disabled]="isLoading()">
+          @if (isLoading()) {
+            <span class="spinner"></span>
+            Verificando...
+          } @else {
+            Ingresar al sistema
+          }
+        </button>
+
+      </form>
+    </div>
+
+    <p class="footer-text">© 2026 Sistema de Votaciones · Todos los derechos reservados</p>
+  </div>
+</div>
