@@ -28,7 +28,7 @@ module "s3_frontend" {
 
   bucket_name                 = "${var.project}-${var.environment}-frontend"
   cloudfront_distribution_arn = module.cloudfront.distribution_arn
-  force_destroy               = true   # En dev podemos destruirlo libremente
+  force_destroy               = true # En dev podemos destruirlo libremente
 
   tags = local.common_tags
 }
@@ -37,7 +37,7 @@ module "s3_frontend" {
 module "s3_multimedia" {
   source = "../../modules/s3_multimedia"
 
-  bucket_name  = "${var.project}-${var.environment}-multimedia"
+  bucket_name   = "${var.project}-${var.environment}-multimedia"
   force_destroy = true
 
   cors_allowed_origins = ["https://${module.cloudfront.distribution_domain_name}"]
@@ -56,6 +56,28 @@ module "s3_serverless" {
 
   # ARN del rol de CI/CD de Azure DevOps (se crea externamente o se puede agregar como módulo)
   allowed_principal_arns = var.cicd_role_arns
+
+  tags = local.common_tags
+}
+
+# ── 5. Secrets Manager ───────────────────────────────────
+module "secrets_manager" {
+  source = "../../modules/secrets_manager"
+
+  project     = var.project
+  environment = var.environment
+
+  # recovery_window_days = 0 → eliminación inmediata en dev (sin ventana de 7 días)
+  recovery_window_days     = 0
+  kms_deletion_window_days = 7
+
+  # Secretos a crear: agrega/quita entradas aquí y en terraform.tfvars
+  # para controlar qué secretos existen. Los valores se rellenan en la
+  # consola AWS o mediante CLI; Terraform solo crea el "contenedor".
+  secrets = var.secrets
+
+  # Roles Lambda: se rellenan cuando se desplieguen las funciones
+  allowed_read_arns = var.lambda_role_arns
 
   tags = local.common_tags
 }

@@ -1,100 +1,107 @@
-# ============================================================
-#  Pipeline: Terraform Infrastructure
-#  Stages: validate → plan → apply
-#
-#  Variables requeridas (Azure DevOps > Library > Variable Group
-#  "terraform-secrets"):
-#    AWS_ACCESS_KEY_ID      → Credencial AWS (secret)
-#    AWS_SECRET_ACCESS_KEY  → Credencial AWS (secret)
-#    AWS_DEFAULT_REGION     → p.ej. us-east-1
-#
-#  El stage "Apply Prod" requiere aprobación manual antes
-#  de ejecutarse (configurar en Environments de Azure DevOps).
-# ============================================================
-
 trigger:
   branches:
     include:
-      - main
-      - develop
+      - dev
   paths:
     include:
       - infra/terraform/**
+      - infra/scripts/**
+      - .azure-pipelines/terraform.yml
+      - .azure-pipelines/templates/**
 
 pr:
   branches:
     include:
-      - main
-      - develop
+      - dev
   paths:
     include:
       - infra/terraform/**
 
-variables:
-  - group: terraform-secrets           # Variable Group con AWS_ACCESS_KEY_ID, etc.
-  - name: TF_VERSION
-    value: '1.7.5'
-  - name: TF_ROOT
-    value: '$(Build.SourcesDirectory)/infra/terraform/environments'
-
 pool:
-  name: Default   # Agente self-hosted
+  vmImage: ubuntu-latest
 
-# ── Plantilla reutilizable de pasos de Terraform ─────────
-# Se usa en cada stage con diferentes comandos
+variables:
+  TF_VERSION: "1.7.5"
+  TF_ROOT: "$(Build.SourcesDirectory)/infra/terraform/environments"
+  AWS_SERVICE_CONNECTION: "aws-sistema-votaciones"
+  AWS_REGION: "us-east-1"
 
 stages:
 
   # ────────────────────────────────────────────────────────
-  #  STAGE 1: Validate (todas las ramas y PRs)
+  #  STAGE 0: Bootstrap
+  #  Idempotente — crea el bucket S3 y la tabla DynamoDB
+  #  solo si no existen. Seguro de ejecutar siempre.
+  # ────────────────────────────────────────────────────────
+  - stage: Bootstrap
+    displayName: "⚙️ Bootstrap Remote State"
+    condition: ne(variables['Build.Reason'], 'PullRequest')
+    jobs:
+      - job: Bootstrap
+        displayName: "Bucket S3 + DynamoDB para TF state"
+        steps:
+          - checkout: self
+            fetchDepth: 1
+
+          - task: AWSShellScript@1
+            displayName: "Ejecutar bootstrap.sh"
+            inputs:
+              awsCredentials: $(AWS_SERVICE_CONNECTION)
+              regionName: $(AWS_REGION)
+              scriptType: filePath
+              filePath: "infra/scripts/bootstrap.sh"
+
+  # ────────────────────────────────────────────────────────
+  #  STAGE 1: Validate — fmt -check + terraform validate
+  #  Corre en push y en PRs
   # ────────────────────────────────────────────────────────
   - stage: Validate
-    displayName: '🔍 Validate Terraform'
+    displayName: "🔍 Validate"
+    dependsOn: []   # No depende de Bootstrap (también corre en PRs)
     jobs:
       - job: ValidateDev
-        displayName: 'Validate - DEV'
+        displayName: "Validate DEV"
         steps:
           - template: templates/terraform-steps.yml
             parameters:
               environment: dev
               tfCommand: validate
-
-      - job: ValidateProd
-        displayName: 'Validate - PROD'
-        steps:
-          - template: templates/terraform-steps.yml
-            parameters:
-              environment: prod
-              tfCommand: validate
+              awsServiceConnection: $(AWS_SERVICE_CONNECTION)
+              awsRegion: $(AWS_REGION)
 
   # ────────────────────────────────────────────────────────
-  #  STAGE 2: Plan DEV (solo en push a develop o main)
+  #  STAGE 2: Plan — genera el tfplan
+  #  Solo en push (no en PRs)
   # ────────────────────────────────────────────────────────
-  - stage: PlanDev
-    displayName: '📋 Plan DEV'
-    dependsOn: Validate
-    condition: and(succeeded(), ne(variables['Build.Reason'], 'PullRequest'))
+  - stage: Plan
+    displayName: "📋 Plan DEV"
+    dependsOn:
+      - Bootstrap
+      - Validate
+    condition: and(succeeded('Validate'), ne(variables['Build.Reason'], 'PullRequest'))
     jobs:
       - job: PlanDev
-        displayName: 'Terraform Plan - DEV'
+        displayName: "terraform plan (dev)"
         steps:
           - template: templates/terraform-steps.yml
             parameters:
               environment: dev
               tfCommand: plan
               savePlan: true
+              awsServiceConnection: $(AWS_SERVICE_CONNECTION)
+              awsRegion: $(AWS_REGION)
 
+  # ──────────────────────────────────────────────────────── plan generado
+  #  Solo en push a main o dev (no en PRs)
   # ────────────────────────────────────────────────────────
-  #  STAGE 3: Apply DEV (solo en push a develop o main)
-  # ────────────────────────────────────────────────────────
-  - stage: ApplyDev
-    displayName: '🚀 Apply DEV'
-    dependsOn: PlanDev
-    condition: and(succeeded(), eq(variables['Build.SourceBranchName'], 'develop'))
+  - stage: Apply
+    displayName: "🚀 Apply DEV"
+    dependsOn: Plan
+    condition: and(succeeded(), ne(variables['Build.Reason'], 'PullRequest'), eq(variables['Build.SourceBranchName'], 'dev'))
     jobs:
       - deployment: ApplyDev
-        displayName: 'Terraform Apply - DEV'
-        environment: 'dev'           # Crear este environment en Azure DevOps
+        displayName: "terraform apply (dev)"
+        environment: "dev"
         strategy:
           runOnce:
             deploy:
@@ -103,40 +110,6 @@ stages:
                   parameters:
                     environment: dev
                     tfCommand: apply
+                    awsServiceConnection: $(AWS_SERVICE_CONNECTION)
+                    awsRegion: $(AWS_REGION)
 
-  # ────────────────────────────────────────────────────────
-  #  STAGE 4: Plan PROD (solo en push a main)
-  # ────────────────────────────────────────────────────────
-  - stage: PlanProd
-    displayName: '📋 Plan PROD'
-    dependsOn: Validate
-    condition: and(succeeded(), eq(variables['Build.SourceBranchName'], 'main'), ne(variables['Build.Reason'], 'PullRequest'))
-    jobs:
-      - job: PlanProd
-        displayName: 'Terraform Plan - PROD'
-        steps:
-          - template: templates/terraform-steps.yml
-            parameters:
-              environment: prod
-              tfCommand: plan
-              savePlan: true
-
-  # ────────────────────────────────────────────────────────
-  #  STAGE 5: Apply PROD (requiere aprobación manual)
-  # ────────────────────────────────────────────────────────
-  - stage: ApplyProd
-    displayName: '🚀 Apply PROD  ⚠️ Requiere aprobación'
-    dependsOn: PlanProd
-    condition: and(succeeded(), eq(variables['Build.SourceBranchName'], 'main'))
-    jobs:
-      - deployment: ApplyProd
-        displayName: 'Terraform Apply - PROD'
-        environment: 'prod'          # Configurar aprobación manual en este environment
-        strategy:
-          runOnce:
-            deploy:
-              steps:
-                - template: templates/terraform-steps.yml
-                  parameters:
-                    environment: prod
-                    tfCommand: apply

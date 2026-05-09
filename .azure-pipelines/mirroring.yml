@@ -1,39 +1,59 @@
+# ============================================================
+#  mirroring.yml
+#  Mirror de Azure DevOps → GitHub
+#
+#  Cada push a `main` en Azure DevOps replica el contenido
+#  a la rama `main` de github.com/llimaix/SistemaVotaciones
+#
+#  Configuración requerida (una sola vez):
+#  ─────────────────────────────────────────────────────────
+#  1. Crear un GitHub Personal Access Token (PAT):
+#     GitHub → Settings → Developer Settings
+#     → Fine-grained tokens → New token
+#     → Permisos: Contents: Read and Write
+#       (solo el repo llimaix/SistemaVotaciones)
+#
+#  2. Guardar el PAT como variable secreta en ESTE pipeline:
+#     Pipeline → Edit → Variables → (+)
+#     → Nombre: GITHUB_PAT
+#     → Valor: el token
+#     → ✅ Keep this value secret
+#     → Guardar
+#
+#  Sin Library. Sin Variable Groups.
+# ============================================================
+
 trigger:
   branches:
     include:
-      - '*'   # Escucha todos los branches
-  tags:
-    include:
-      - '*'   # Escucha todos los tags
+      - main   # Solo main dispara el mirror
+
+pr: none
 
 pool:
   vmImage: ubuntu-latest
 
 steps:
   - checkout: self
+    displayName: "Checkout completo"
     fetchDepth: 0
     persistCredentials: true
 
   - script: |
       set -euo pipefail
 
-      echo "Configurando identidad de Git..."
       git config user.email "azure-mirror-bot@noreply.com"
       git config user.name  "Azure Mirror Bot"
 
-      # Construir la URL autenticada hacia GitHub
-      GITHUB_URL="https://${GITHUB_TOKEN}@${GITHUB_REPO}"
+      GITHUB_URL="https://$(GITHUB_PAT)@github.com/llimaix/SistemaVotaciones.git"
 
-      echo "Agregando remote 'github'..."
       git remote add github "$GITHUB_URL" 2>/dev/null \
         || git remote set-url github "$GITHUB_URL"
 
-      echo "Ejecutando mirror push a GitHub..."
-      # --mirror sincroniza ramas, tags y eliminaciones
-      git push github --mirror
+      echo "── Pushing main → github.com/llimaix/SistemaVotaciones ──"
+      git push github "HEAD:refs/heads/main"
 
-      echo "Mirror completado exitosamente."
-    displayName: 'Mirror → GitHub'
+      echo "✅ Mirror completado"
+    displayName: "Mirror → GitHub main"
     env:
-      GITHUB_TOKEN: $(GITHUB_TOKEN)
-      GITHUB_REPO:  $(GITHUB_REPO)
+      GITHUB_PAT: $(GITHUB_PAT)

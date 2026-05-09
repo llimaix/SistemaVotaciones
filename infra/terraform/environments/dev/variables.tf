@@ -19,3 +19,27 @@ variable "cicd_role_arns" {
   type        = list(string)
   default     = []
 }
+
+variable "lambda_role_arns" {
+  description = "ARNs de roles IAM de las Lambdas con permiso de lectura sobre Secrets Manager"
+  type        = list(string)
+  default     = []
+}
+
+# ── Secrets Manager ───────────────────────────────────────
+variable "secrets" {
+  description = <<-EOT
+    Mapa de secretos a crear en AWS Secrets Manager.
+    La clave es el sufijo de ruta; el nombre final en AWS será
+    /{project}/{environment}/{key}.
+
+    Los secretos se crean VACÍOS. Para agregar un secreto:
+      añadir entrada aquí + terraform apply.
+    Para eliminar un secreto:
+      quitar entrada aquí + terraform apply.
+  EOT
+  type = map(object({
+    description = string
+  }))
+  default = {}
+}
