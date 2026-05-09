@@ -1,17 +1,3 @@
-# ============================================================
-#  terraform.yml — Infraestructura Terraform (DEV)
-#  Stages: bootstrap → validate → plan → apply
-#
-#  Autenticación: AWS Service Connection
-#    Nombre requerido: "aws-sistema-votaciones"
-#    Tipo: "AWS for Microsoft Azure DevOps"
-#    Configurar en: Project Settings → Service Connections → New → AWS
-#
-#  Sin Library. Sin Variable Groups. Sin prod.
-#  Los secretos de la app se crean VACÍOS en Secrets Manager;
-#  sus valores se cargan manualmente en la consola AWS.
-# ============================================================
-
 trigger:
   branches:
     include:
