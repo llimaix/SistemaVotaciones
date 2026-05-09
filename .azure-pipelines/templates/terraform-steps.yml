@@ -30,11 +30,21 @@ steps:
   - checkout: self
     fetchDepth: 1
 
-  # ── Instalar Terraform ────────────────────────────────────
-  - task: TerraformInstaller@1
+  # ── Instalar Terraform (sin extensiones extra) ────────────
+  - script: |
+      set -euo pipefail
+      TF_VERSION="$(TF_VERSION)"
+      if terraform version 2>/dev/null | grep -q "${TF_VERSION}"; then
+        echo "✓ Terraform ${TF_VERSION} ya instalado"
+        exit 0
+      fi
+      echo "── Instalando Terraform ${TF_VERSION} ────────────────"
+      curl -fsSL "https://releases.hashicorp.com/terraform/${TF_VERSION}/terraform_${TF_VERSION}_linux_amd64.zip" \
+        -o /tmp/terraform.zip
+      unzip -o /tmp/terraform.zip -d /usr/local/bin/
+      chmod +x /usr/local/bin/terraform
+      terraform version
     displayName: "Instalar Terraform $(TF_VERSION)"
-    inputs:
-      terraformVersion: $(TF_VERSION)
 
   # ── terraform fmt -check + validate ──────────────────────
   - ${{ if eq(parameters.tfCommand, 'validate') }}:
