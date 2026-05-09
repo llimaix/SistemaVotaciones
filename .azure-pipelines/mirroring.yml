@@ -72,9 +72,10 @@ steps:
       git config user.name  "Luis Lima"
 
       # ── Construir URL autenticada ─────────────────────────
-      # Extrae la parte después de "https://" para insertar el token
-      REPO_PATH="${GITHUB_REPO#https://}"
-      GITHUB_URL="https://${GITHUB_TOKEN}@${REPO_PATH}"
+      # Sanitizar: eliminar comillas simples, dobles y espacios del valor
+      CLEAN_REPO=$(echo "${GITHUB_REPO}" | tr -d "'\"\t " | sed 's|\.git$||')
+      GITHUB_URL="https://${GITHUB_TOKEN}@${CLEAN_REPO#https://}.git"
+      echo "── Repo destino: ${CLEAN_REPO}.git ──"
 
       git remote add github "$GITHUB_URL" 2>/dev/null \
         || git remote set-url github "$GITHUB_URL"
