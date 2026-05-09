@@ -65,7 +65,7 @@ module "secrets_manager" {
   # Ventana de recuperación estándar en prod
   recovery_window_days     = 30
   kms_deletion_window_days = 30
-  allowed_read_arns = var.lambda_role_arns
+  allowed_read_arns        = var.lambda_role_arns
 
   tags = local.common_tags
 }
