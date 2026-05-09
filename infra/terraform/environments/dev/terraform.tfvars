@@ -2,19 +2,24 @@ project        = "sistema-votaciones"
 environment    = "dev"
 aws_region     = "us-east-1"
 cicd_role_arns = []
-# Agrega el ARN del rol de CI cuando lo tengas:
 # cicd_role_arns = ["arn:aws:iam::123456789012:role/azure-devops-deploy-role"]
 
-# Lambda roles (se actualizan cuando se despliegan las funciones con Serverless Framework)
+# Lambda roles — se actualizan cuando Serverless Framework despliega las funciones
 lambda_role_arns = []
 
-# Base de datos independiente
-# ⚠ En producción pasa estos valores vía variables de pipeline (no en el .tfvars)
-db_host     = "PLACEHOLDER_DB_HOST"
-db_port     = "5432"
-db_name     = "votaciones_dev"
-db_username = "PLACEHOLDER_USER"
-db_password = "PLACEHOLDER_CHANGE_ME"
-
-# JWT secret (placeholder; rotarlo en Secrets Manager después del primer apply)
-jwt_secret_value = "PLACEHOLDER_JWT_SECRET_CHANGE_ME"
+# ──────────────────────────────────────────────────────────
+#  Secrets Manager — secretos a crear (vacíos)
+#
+#  Para CREAR un secreto → agregar entrada + terraform apply
+#  Para ELIMINAR un secreto → quitar entrada + terraform apply
+#
+#  Los VALORES se rellenan en la consola AWS o con:
+#    aws secretsmanager put-secret-value \
+#      --secret-id /sistema-votaciones/dev/db/credentials \
+#      --secret-string '{"host":"...","port":"5432","user":"...","pass":"..."}'
+# ──────────────────────────────────────────────────────────
+secrets = {
+  "db/credentials" = { description = "Credenciales de la base de datos (host, port, user, pass)" }
+  "auth/jwt"       = { description = "Clave secreta para firma de tokens JWT" }
+  "app/config"     = { description = "Configuración general de la aplicación" }
+}

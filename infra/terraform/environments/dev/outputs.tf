@@ -25,21 +25,16 @@ output "s3_serverless_bucket" {
 
 # ── Secrets Manager ───────────────────────────────────────
 output "secrets_kms_key_arn" {
-  description = "ARN de la KMS key de secretos"
+  description = "ARN de la KMS key de Secrets Manager"
   value       = module.secrets_manager.kms_key_arn
 }
 
-output "secret_db_credentials_arn" {
-  description = "ARN del secreto de credenciales de BD"
-  value       = module.secrets_manager.db_credentials_secret_arn
+output "secret_arns" {
+  description = "Mapa de ARNs de los secretos creados. Clave = sufijo de ruta (ej: 'db/credentials')"
+  value       = module.secrets_manager.secret_arns
 }
 
-output "secret_jwt_arn" {
-  description = "ARN del secreto JWT"
-  value       = module.secrets_manager.jwt_secret_arn
-}
-
-output "secret_app_config_arn" {
-  description = "ARN del secreto de configuración de la app"
-  value       = module.secrets_manager.app_config_secret_arn
+output "secret_names" {
+  description = "Mapa de nombres completos de los secretos en AWS"
+  value       = module.secrets_manager.secret_names
 }

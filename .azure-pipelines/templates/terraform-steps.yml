@@ -1,110 +1,112 @@
 # ============================================================
 #  Template: terraform-steps.yml
-#  Pasos reutilizables para instalar Terraform y ejecutar
-#  un comando (validate, plan, apply) sobre un entorno dado.
+#  Pasos reutilizables para Terraform con AWS Service Connection.
+#
+#  Parámetros:
+#    environment          → dev
+#    tfCommand            → validate | plan | apply
+#    savePlan             → true si se quiere publicar el plan
+#    awsServiceConnection → nombre de la Service Connection AWS
+#    awsRegion            → región AWS
 # ============================================================
 
 parameters:
   - name: environment
-    type: string                   # dev | prod
+    type: string
+    default: dev
   - name: tfCommand
-    type: string                   # validate | plan | apply
+    type: string              # validate | plan | apply
   - name: savePlan
     type: boolean
     default: false
+  - name: awsServiceConnection
+    type: string
+    default: "aws-sistema-votaciones"
+  - name: awsRegion
+    type: string
+    default: "us-east-1"
 
 steps:
   - checkout: self
     fetchDepth: 1
 
-  # ── Instalar / verificar Terraform ──────────────────────
-  - script: |
-      set -euo pipefail
-      # Si ya está instalado en el agente, usar el existente
-      if command -v terraform &>/dev/null; then
-        echo "Terraform ya disponible: $(terraform version | head -1)"
-        exit 0
-      fi
+  # ── Instalar Terraform ────────────────────────────────────
+  - task: TerraformInstaller@1
+    displayName: "Instalar Terraform $(TF_VERSION)"
+    inputs:
+      terraformVersion: $(TF_VERSION)
 
-      # Si no está, descargarlo
-      TERRAFORM_VERSION="$(TF_VERSION)"
-      TF_BIN="$HOME/.terraform-bin"
-      mkdir -p "$TF_BIN"
-      echo "Descargando Terraform ${TERRAFORM_VERSION}..."
-      curl -fsSL "https://releases.hashicorp.com/terraform/${TERRAFORM_VERSION}/terraform_${TERRAFORM_VERSION}_linux_amd64.zip" \
-        -o /tmp/terraform.zip
-      unzip -o /tmp/terraform.zip -d "$TF_BIN"
-      chmod +x "$TF_BIN/terraform"
-      echo "##vso[task.prependpath]$TF_BIN"
-      terraform version
-    displayName: 'Verificar Terraform'
-
-  # ── Configurar credenciales AWS ──────────────────────────
-  - script: |
-      echo "##vso[task.setvariable variable=AWS_ACCESS_KEY_ID]$(AWS_ACCESS_KEY_ID)"
-      echo "##vso[task.setvariable variable=AWS_SECRET_ACCESS_KEY]$(AWS_SECRET_ACCESS_KEY)"
-      echo "##vso[task.setvariable variable=AWS_DEFAULT_REGION]$(AWS_DEFAULT_REGION)"
-    displayName: 'Configurar credenciales AWS'
-
-  # ── terraform init ───────────────────────────────────────
-  - script: |
-      set -euo pipefail
-      cd "$(TF_ROOT)/${{ parameters.environment }}"
-      terraform init -input=false
-    displayName: 'terraform init (${{ parameters.environment }})'
-    env:
-      AWS_ACCESS_KEY_ID:     $(AWS_ACCESS_KEY_ID)
-      AWS_SECRET_ACCESS_KEY: $(AWS_SECRET_ACCESS_KEY)
-      AWS_DEFAULT_REGION:    $(AWS_DEFAULT_REGION)
-
-  # ── terraform validate ───────────────────────────────────
+  # ── terraform fmt -check + validate ──────────────────────
   - ${{ if eq(parameters.tfCommand, 'validate') }}:
-    - script: |
-        set -euo pipefail
-        cd "$(TF_ROOT)/${{ parameters.environment }}"
-        terraform fmt -check -recursive
-        terraform validate
-      displayName: 'terraform validate (${{ parameters.environment }})'
-      env:
-        AWS_ACCESS_KEY_ID:     $(AWS_ACCESS_KEY_ID)
-        AWS_SECRET_ACCESS_KEY: $(AWS_SECRET_ACCESS_KEY)
-        AWS_DEFAULT_REGION:    $(AWS_DEFAULT_REGION)
+    - task: AWSShellScript@1
+      displayName: "terraform fmt + validate (${{ parameters.environment }})"
+      inputs:
+        awsCredentials: ${{ parameters.awsServiceConnection }}
+        regionName: ${{ parameters.awsRegion }}
+        scriptType: inline
+        inlineScript: |
+          set -euo pipefail
+          cd "$(TF_ROOT)/${{ parameters.environment }}"
+          echo "── terraform fmt -check ──────────────────────────"
+          terraform fmt -check -recursive ../../
+          echo "── terraform init (sin backend) ──────────────────"
+          terraform init -backend=false -input=false
+          echo "── terraform validate ────────────────────────────"
+          terraform validate
+          echo "✓ Validate OK (${{ parameters.environment }})"
 
-  # ── terraform plan ───────────────────────────────────────
+  # ── terraform plan ────────────────────────────────────────
   - ${{ if eq(parameters.tfCommand, 'plan') }}:
-    - script: |
-        set -euo pipefail
-        cd "$(TF_ROOT)/${{ parameters.environment }}"
-        terraform plan \
-          -input=false \
-          -var-file="terraform.tfvars" \
-          -out="$(Build.ArtifactStagingDirectory)/tfplan-${{ parameters.environment }}"
-      displayName: 'terraform plan (${{ parameters.environment }})'
-      env:
-        AWS_ACCESS_KEY_ID:     $(AWS_ACCESS_KEY_ID)
-        AWS_SECRET_ACCESS_KEY: $(AWS_SECRET_ACCESS_KEY)
-        AWS_DEFAULT_REGION:    $(AWS_DEFAULT_REGION)
+    - task: AWSShellScript@1
+      displayName: "terraform init + plan (${{ parameters.environment }})"
+      inputs:
+        awsCredentials: ${{ parameters.awsServiceConnection }}
+        regionName: ${{ parameters.awsRegion }}
+        scriptType: inline
+        inlineScript: |
+          set -euo pipefail
+          cd "$(TF_ROOT)/${{ parameters.environment }}"
+          echo "── terraform init ────────────────────────────────"
+          terraform init -input=false
+          echo "── terraform plan ────────────────────────────────"
+          terraform plan \
+            -input=false \
+            -var-file="terraform.tfvars" \
+            -out="$(Build.ArtifactStagingDirectory)/tfplan-${{ parameters.environment }}"
+          echo "── Resumen ───────────────────────────────────────"
+          terraform show -no-color \
+            "$(Build.ArtifactStagingDirectory)/tfplan-${{ parameters.environment }}" | tail -20
+          echo "✓ Plan OK (${{ parameters.environment }})"
 
     - ${{ if parameters.savePlan }}:
       - publish: $(Build.ArtifactStagingDirectory)
         artifact: tfplan-${{ parameters.environment }}
-        displayName: 'Publicar plan (${{ parameters.environment }})'
+        displayName: "Publicar plan (${{ parameters.environment }})"
 
-  # ── terraform apply ──────────────────────────────────────
+  # ── terraform apply ───────────────────────────────────────
   - ${{ if eq(parameters.tfCommand, 'apply') }}:
     - download: current
       artifact: tfplan-${{ parameters.environment }}
-      displayName: 'Descargar plan (${{ parameters.environment }})'
+      displayName: "Descargar plan (${{ parameters.environment }})"
 
-    - script: |
-        set -euo pipefail
-        cd "$(TF_ROOT)/${{ parameters.environment }}"
-        terraform apply \
-          -input=false \
-          -auto-approve \
-          "$(Pipeline.Workspace)/tfplan-${{ parameters.environment }}/tfplan-${{ parameters.environment }}"
-      displayName: 'terraform apply (${{ parameters.environment }})'
-      env:
-        AWS_ACCESS_KEY_ID:     $(AWS_ACCESS_KEY_ID)
-        AWS_SECRET_ACCESS_KEY: $(AWS_SECRET_ACCESS_KEY)
-        AWS_DEFAULT_REGION:    $(AWS_DEFAULT_REGION)
+    - task: AWSShellScript@1
+      displayName: "terraform apply (${{ parameters.environment }})"
+      inputs:
+        awsCredentials: ${{ parameters.awsServiceConnection }}
+        regionName: ${{ parameters.awsRegion }}
+        scriptType: inline
+        inlineScript: |
+          set -euo pipefail
+          cd "$(TF_ROOT)/${{ parameters.environment }}"
+          echo "── terraform init ────────────────────────────────"
+          terraform init -input=false
+          echo "── terraform apply ───────────────────────────────"
+          terraform apply \
+            -input=false \
+            -auto-approve \
+            "$(Pipeline.Workspace)/tfplan-${{ parameters.environment }}/tfplan-${{ parameters.environment }}"
+          echo ""
+          echo "── Outputs ───────────────────────────────────────"
+          terraform output
+          echo "✓ Apply OK (${{ parameters.environment }})"
+

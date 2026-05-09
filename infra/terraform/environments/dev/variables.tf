@@ -26,43 +26,20 @@ variable "lambda_role_arns" {
   default     = []
 }
 
-# ── Base de datos ─────────────────────────────────────────
-variable "db_host" {
-  description = "Host del servidor de base de datos independiente"
-  type        = string
-  default     = "PLACEHOLDER_DB_HOST"
-}
+# ── Secrets Manager ───────────────────────────────────────
+variable "secrets" {
+  description = <<-EOT
+    Mapa de secretos a crear en AWS Secrets Manager.
+    La clave es el sufijo de ruta; el nombre final en AWS será
+    /{project}/{environment}/{key}.
 
-variable "db_port" {
-  description = "Puerto de la base de datos"
-  type        = string
-  default     = "5432"
-}
-
-variable "db_name" {
-  description = "Nombre de la base de datos"
-  type        = string
-  default     = "votaciones"
-}
-
-variable "db_username" {
-  description = "Usuario de la base de datos"
-  type        = string
-  default     = "PLACEHOLDER_USER"
-  sensitive   = true
-}
-
-variable "db_password" {
-  description = "Contraseña de la base de datos (solo para el create inicial; luego se rota fuera de Terraform)"
-  type        = string
-  default     = "PLACEHOLDER_CHANGE_ME"
-  sensitive   = true
-}
-
-# ── JWT ───────────────────────────────────────────────────
-variable "jwt_secret_value" {
-  description = "Valor inicial del JWT secret (solo para el create inicial; luego se rota fuera de Terraform)"
-  type        = string
-  default     = "PLACEHOLDER_JWT_SECRET_CHANGE_ME"
-  sensitive   = true
+    Los secretos se crean VACÍOS. Para agregar un secreto:
+      añadir entrada aquí + terraform apply.
+    Para eliminar un secreto:
+      quitar entrada aquí + terraform apply.
+  EOT
+  type = map(object({
+    description = string
+  }))
+  default = {}
 }

@@ -1,5 +1,5 @@
 variable "project" {
-  description = "Nombre del proyecto (usado como prefijo en los nombres de recursos)"
+  description = "Nombre del proyecto (prefijo en los nombres de recursos)"
   type        = string
 }
 
@@ -16,74 +16,47 @@ variable "tags" {
 
 # ── KMS ──────────────────────────────────────────────────
 variable "kms_deletion_window_days" {
-  description = "Días de espera antes de eliminar la KMS key (7-30)"
+  description = "Días de espera antes de eliminar la KMS key (7-30). En dev se puede usar 7."
   type        = number
   default     = 7
 }
 
 # ── Secrets Manager ───────────────────────────────────────
 variable "recovery_window_days" {
-  description = "Días de recuperación antes de eliminar un secreto de forma permanente (0 = forzar, 7-30 = ventana)"
+  description = <<-EOT
+    Días de recuperación antes de eliminar un secreto de forma permanente.
+    0  = eliminar inmediatamente (útil en dev).
+    7-30 = ventana de recuperación (recomendado en prod).
+  EOT
   type        = number
-  default     = 7
+  default     = 0
+}
+
+variable "secrets" {
+  description = <<-EOT
+    Mapa de secretos a crear. La clave es el sufijo de la ruta
+    (el nombre final en AWS será /{project}/{environment}/{key}).
+    Los secretos se crean VACÍOS; los valores se rellenan manualmente
+    o por rotación automática fuera de Terraform.
+
+    Para CREAR un secreto → agregar entrada al mapa + apply.
+    Para ELIMINAR un secreto → quitar entrada del mapa + apply.
+
+    Ejemplo:
+      secrets = {
+        "db/credentials" = { description = "Credenciales BD" }
+        "auth/jwt"       = { description = "JWT secret" }
+      }
+  EOT
+  type = map(object({
+    description = string
+  }))
+  default = {}
 }
 
 variable "allowed_read_arns" {
-  description = "Lista de ARNs (roles Lambda, CI/CD) con permiso de lectura sobre los secretos"
+  description = "ARNs de roles IAM (Lambdas, CI/CD) con permiso de lectura sobre los secretos"
   type        = list(string)
   default     = []
 }
 
-# ── Base de datos ─────────────────────────────────────────
-variable "db_host" {
-  description = "Host del servidor de base de datos independiente"
-  type        = string
-  default     = "PLACEHOLDER_DB_HOST"
-}
-
-variable "db_port" {
-  description = "Puerto de la base de datos"
-  type        = string
-  default     = "5432"
-}
-
-variable "db_name" {
-  description = "Nombre de la base de datos"
-  type        = string
-  default     = "votaciones"
-}
-
-variable "db_username" {
-  description = "Usuario de la base de datos"
-  type        = string
-  default     = "PLACEHOLDER_USER"
-  sensitive   = true
-}
-
-variable "db_password" {
-  description = "Contraseña de la base de datos (se ignorará en applies posteriores)"
-  type        = string
-  default     = "PLACEHOLDER_CHANGE_ME"
-  sensitive   = true
-}
-
-# ── JWT ───────────────────────────────────────────────────
-variable "jwt_secret_value" {
-  description = "Valor inicial de la clave secreta JWT (se ignorará en applies posteriores)"
-  type        = string
-  default     = "PLACEHOLDER_JWT_SECRET_CHANGE_ME"
-  sensitive   = true
-}
-
-# ── Configuración app (referencia a otros módulos) ────────
-variable "s3_multimedia_bucket" {
-  description = "Nombre del bucket S3 de multimedia (para app/config secret)"
-  type        = string
-  default     = ""
-}
-
-variable "cloudfront_domain" {
-  description = "Dominio CloudFront del frontend (para app/config secret)"
-  type        = string
-  default     = ""
-}

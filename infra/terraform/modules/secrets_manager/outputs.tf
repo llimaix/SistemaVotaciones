@@ -8,32 +8,20 @@ output "kms_key_alias" {
   value       = aws_kms_alias.secrets.name
 }
 
-output "db_credentials_secret_arn" {
-  description = "ARN del secreto de credenciales de base de datos"
-  value       = aws_secretsmanager_secret.db_credentials.arn
+output "secret_arns" {
+  description = <<-EOT
+    Mapa de ARNs de los secretos creados.
+    La clave es el sufijo de ruta definido en var.secrets.
+    Ejemplo: secret_arns["db/credentials"] → arn:aws:secretsmanager:...
+  EOT
+  value = {
+    for k, s in aws_secretsmanager_secret.secrets : k => s.arn
+  }
 }
 
-output "db_credentials_secret_name" {
-  description = "Nombre del secreto de credenciales de base de datos"
-  value       = aws_secretsmanager_secret.db_credentials.name
-}
-
-output "jwt_secret_arn" {
-  description = "ARN del secreto JWT"
-  value       = aws_secretsmanager_secret.jwt_secret.arn
-}
-
-output "jwt_secret_name" {
-  description = "Nombre del secreto JWT"
-  value       = aws_secretsmanager_secret.jwt_secret.name
-}
-
-output "app_config_secret_arn" {
-  description = "ARN del secreto de configuración general"
-  value       = aws_secretsmanager_secret.app_config.arn
-}
-
-output "app_config_secret_name" {
-  description = "Nombre del secreto de configuración general"
-  value       = aws_secretsmanager_secret.app_config.name
+output "secret_names" {
+  description = "Mapa de nombres completos de los secretos en AWS (/{project}/{env}/{key})"
+  value = {
+    for k, s in aws_secretsmanager_secret.secrets : k => s.name
+  }
 }

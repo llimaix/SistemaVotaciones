@@ -67,25 +67,16 @@ module "secrets_manager" {
   project     = var.project
   environment = var.environment
 
-  # Ventana corta en dev para facilitar recreación durante desarrollo
+  # recovery_window_days = 0 → eliminación inmediata en dev (sin ventana de 7 días)
   recovery_window_days     = 0
   kms_deletion_window_days = 7
 
-  # Datos de la BD independiente (valores placeholder; actualizar en pipeline o manualmente)
-  db_host     = var.db_host
-  db_port     = var.db_port
-  db_name     = var.db_name
-  db_username = var.db_username
-  db_password = var.db_password
+  # Secretos a crear: agrega/quita entradas aquí y en terraform.tfvars
+  # para controlar qué secretos existen. Los valores se rellenan en la
+  # consola AWS o mediante CLI; Terraform solo crea el "contenedor".
+  secrets = var.secrets
 
-  # JWT (placeholder; rotar via Secrets Manager console/pipeline)
-  jwt_secret_value = var.jwt_secret_value
-
-  # Referencias a recursos creados en este mismo entorno
-  s3_multimedia_bucket = module.s3_multimedia.bucket_id
-  cloudfront_domain    = module.cloudfront.distribution_domain_name
-
-  # Roles Lambda (vacío hasta que se desplieguen las funciones con Serverless Framework)
+  # Roles Lambda: se rellenan cuando se desplieguen las funciones
   allowed_read_arns = var.lambda_role_arns
 
   tags = local.common_tags
