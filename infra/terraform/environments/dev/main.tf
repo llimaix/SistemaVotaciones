@@ -28,7 +28,7 @@ module "s3_frontend" {
 
   bucket_name                 = "${var.project}-${var.environment}-frontend"
   cloudfront_distribution_arn = module.cloudfront.distribution_arn
-  force_destroy               = true   # En dev podemos destruirlo libremente
+  force_destroy               = true # En dev podemos destruirlo libremente
 
   tags = local.common_tags
 }
@@ -37,7 +37,7 @@ module "s3_frontend" {
 module "s3_multimedia" {
   source = "../../modules/s3_multimedia"
 
-  bucket_name  = "${var.project}-${var.environment}-multimedia"
+  bucket_name   = "${var.project}-${var.environment}-multimedia"
   force_destroy = true
 
   cors_allowed_origins = ["https://${module.cloudfront.distribution_domain_name}"]
